@@ -1,0 +1,16 @@
+# Core
+numpy
+pandas
+matplotlib
+scikit-learn
+
+# Deep Learning
+tensorflow
+
+# Imaging / utilities (used in the original notebook)
+opencv-python
+tqdm
+
+# Model plotting
+pydot
+graphviz
