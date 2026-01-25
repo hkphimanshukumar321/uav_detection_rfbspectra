@@ -24,7 +24,7 @@ from typing import List, Tuple, Dict, Any
 @dataclass
 class DataConfig:
     """Dataset configuration for research experiments."""
-    data_dir: Path = Path("../nr1 1 (1)")  # Relative to research/
+    data_dir: Path = Path("/home/himanshuk/DRONE_RFB_SPECTRA/uav_detection_rfbspectra/nr1 1 (1)")
     img_size: Tuple[int, int] = (64, 64)
     test_split: float = 0.15
     val_split: float = 0.15
