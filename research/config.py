@@ -45,7 +45,7 @@ class ModelConfig:
 @dataclass
 class TrainingConfig:
     """Training configuration optimized for research experiments."""
-    epochs: int = 40  # Reduced from 50
+    epochs: int = 10  # Reduced for CPU training (increase if GPU available)
     batch_size: int = 32
     learning_rate: float = 1e-3
     seed: int = 42
