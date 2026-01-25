@@ -70,17 +70,16 @@ class AblationConfig:
     
     Time savings: ~50% while maintaining research rigor
     """
-    # Focused on lightweight models for edge deployment
-    growth_rates: List[int] = field(default_factory=lambda: [4, 8, 12])
+    # Reduced for CPU training (add more if GPU available)
+    growth_rates: List[int] = field(default_factory=lambda: [4, 8])
     
-    # Key compression factors
-    compressions: List[float] = field(default_factory=lambda: [0.25, 0.5, 0.75])
+    # Key compression factors (reduced for CPU)
+    compressions: List[float] = field(default_factory=lambda: [0.5])
     
-    # Representative depth configurations
+    # Representative depth configurations (reduced for CPU)
     depths: List[Tuple[int, int, int]] = field(default_factory=lambda: [
         (2, 2, 2),  # Shallow
         (3, 3, 3),  # Medium (default)
-        (4, 4, 4),  # Deep
     ])
     
     # Edge-relevant batch sizes (includes small batches for edge simulation)
