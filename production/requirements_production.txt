@@ -1,0 +1,9 @@
+# Production dependencies for edge deployment
+# Minimal footprint for Raspberry Pi / edge devices
+
+numpy>=1.21.0,<2.0.0
+scipy>=1.7.0
+opencv-python-headless>=4.5.0
+tflite-runtime>=2.10.0
+flask>=2.0.0
+pyrtlsdr>=0.2.9

@@ -1,0 +1,36 @@
+# DroneRFB-Spectra: Requirements for Reproducibility
+# =================================================
+# Install: pip install -r requirements.txt
+
+# Core ML Framework
+tensorflow>=2.10.0,<2.16.0
+numpy>=1.21.0,<2.0.0
+pandas>=1.3.0,<3.0.0
+
+# Image Processing
+opencv-python>=4.5.0
+Pillow>=8.0.0
+
+# Machine Learning Utilities
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Progress Bars
+tqdm>=4.62.0
+
+# Configuration
+PyYAML>=5.4.0
+
+# Jupyter Support (optional)
+jupyter>=1.0.0
+notebook>=6.4.0
+ipywidgets>=7.6.0
+
+# Development (optional)
+pytest>=6.2.0
+black>=21.0
+flake8>=3.9.0

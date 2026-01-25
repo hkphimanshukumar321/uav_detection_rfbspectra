@@ -1,0 +1,31 @@
+# Text files
+*.txt text
+
+# Source code  
+*.py text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Web files
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.h5 binary
+*.tflite binary
+*.pkl binary
+*.npy binary

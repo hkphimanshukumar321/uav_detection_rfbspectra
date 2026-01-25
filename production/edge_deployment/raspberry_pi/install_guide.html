@@ -1,0 +1,179 @@
+# Installation Guide – Layman Friendly
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DroneRFB‑Spectra – Quick‑Start Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .step-number {
+            @apply w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg;
+        }
+
+        .card {
+            @apply bg-gray-800 rounded-xl p-6 shadow-xl border border-gray-700;
+        }
+
+        .glass {
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen">
+    <header class="bg-gradient-to-r from-blue-600 to-purple-600 py-6 shadow-lg">
+        <div class="max-w-4xl mx-auto px-4 flex items-center space-x-4">
+            <div class="text-4xl">🚁</div>
+            <h1 class="text-3xl font-bold">DroneRFB‑Spectra Quick‑Start</h1>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-8 space-y-12">
+        <!-- 1️⃣ Hardware Overview -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">1</span>What you
+                need</h2>
+            <ul class="grid md:grid-cols-2 gap-4 text-lg">
+                <li class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H4z" />
+                    </svg>
+                    <span>Raspberry Pi 4 (4 GB) – $55</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 12h2V8H9v4zm-1 5h4a2 2 0 002-2v-1H6v1a2 2 0 002 2z" />
+                    </svg>
+                    <span>RTL‑SDR Blog V3 dongle – $25</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5z" />
+                    </svg>
+                    <span>2.4 GHz antenna – $15</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 5h12v2H4V5zm0 4h12v2H4V9zm0 4h12v2H4v-2z" />
+                    </svg>
+                    <span>Micro‑SD card (32 GB) – $10</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 12h2V8H9v4zm-1 5h4a2 2 0 002-2v-1H6v1a2 2 0 002 2z" />
+                    </svg>
+                    <span>Power bank (5 V 3 A) – $20</span>
+                </li>
+            </ul>
+        </section>
+
+        <!-- 2️⃣ Wiring Diagram (static image placeholder) -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">2</span>Connect the
+                hardware</h2>
+            <p class="mb-4">Plug the RTL‑SDR into one of the Pi’s USB ports, attach the antenna, and insert the micro‑SD
+                card.</p>
+            <div class="flex justify-center">
+                <img src="https://via.placeholder.com/600x300?text=Wiring+Diagram" alt="Wiring diagram"
+                    class="rounded-lg shadow-md" />
+            </div>
+        </section>
+
+        <!-- 3️⃣ Software Installation -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">3</span>Install the
+                software</h2>
+            <ol class="list-decimal list-inside space-y-3 text-lg">
+                <li>Power up the Pi and open a terminal.
+                    <pre class="bg-gray-800 p-2 rounded mt-2"><code>sudo apt update && sudo apt upgrade -y</code></pre>
+                </li>
+                <li>Clone the repository and install dependencies.
+                    <pre
+                        class="bg-gray-800 p-2 rounded mt-2"><code>git clone https://github.com/yourorg/DRONE-RFB-SPECTRA.git\ncd DRONE-RFB-SPECTRA/production\npip install -r requirements_production.txt</code></pre>
+                </li>
+                <li>Build the Docker image (optional, but the easiest way).
+                    <pre class="bg-gray-800 p-2 rounded mt-2"><code>docker compose up -d</code></pre>
+                </li>
+                <li>If you prefer a native install, run the provided installer script.
+                    <pre
+                        class="bg-gray-800 p-2 rounded mt-2"><code>cd edge_deployment/raspberry_pi\nchmod +x install.sh\n./install.sh</code></pre>
+                </li>
+            </ol>
+        </section>
+
+        <!-- 4️⃣ Start the detection service -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">4</span>Run the
+                detector</h2>
+            <p class="mb-4">After installation the system is ready to start detecting drones.</p>
+            <pre class="bg-gray-800 p-2 rounded"><code>python3 detect_realtime.py --freq 2.437e9 --gain 40</code></pre>
+            <p class="mt-4">A tiny web dashboard will be available at
+                <code>http://<span class="font-mono">YOUR_PI_IP</span>:8080</code>. Open it in any browser (desktop,
+                phone, tablet).</p>
+        </section>
+
+        <!-- 5️⃣ Dashboard walkthrough (interactive demo) -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">5</span>What you
+                see on the dashboard</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <img src="https://via.placeholder.com/400x250?text=Dashboard+Header" alt="Dashboard header"
+                        class="rounded-lg shadow-md" />
+                    <p class="mt-2 text-center text-sm">Header – system status, start/stop button</p>
+                </div>
+                <div>
+                    <img src="https://via.placeholder.com/400x250?text=Live+Detection+Card" alt="Live detection"
+                        class="rounded-lg shadow-md" />
+                    <p class="mt-2 text-center text-sm">Live detection – drone type, confidence, timestamp</p>
+                </div>
+                <div class="md:col-span-2">
+                    <img src="https://via.placeholder.com/800x200?text=Detection+History+Table" alt="History table"
+                        class="rounded-lg shadow-md" />
+                    <p class="mt-2 text-center text-sm">History – last 10 detections with latency</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6️⃣ FAQ & Troubleshooting -->
+        <section class="card glass">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center"><span class="step-number mr-3">6</span>FAQ &amp;
+                Troubleshooting</h2>
+            <details class="mb-4">
+                <summary class="cursor-pointer text-blue-300">Why is the detection confidence low?</summary>
+                <p class="mt-2">Low confidence usually means the RF environment is noisy or the antenna is not optimally
+                    positioned. Try moving the antenna away from metal objects and increase the SDR gain.</p>
+            </details>
+            <details class="mb-4">
+                <summary class="cursor-pointer text-blue-300">The web dashboard does not load.</summary>
+                <p class="mt-2">Make sure the Docker container (or native Python process) is running. Check the
+                    container logs with <code>docker logs dronerfb_spectra</code> or run
+                    <code>ps aux | grep dashboard.py</code>.</p>
+            </details>
+            <details>
+                <summary class="cursor-pointer text-blue-300">Can I use a different SDR?</summary>
+                <p class="mt-2">Yes – any SDR that provides raw IQ samples at ≥2 MS/s works. Update the
+                    <code>detect_realtime.py</code> script to use the appropriate driver.</p>
+            </details>
+        </section>
+
+        <!-- Call‑to‑action -->
+        <section class="text-center mt-12">
+            <a href="https://github.com/yourorg/DRONE-RFB-SPECTRA"
+                class="inline-block bg-gradient-to-r from-green-500 to-teal-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition">🚀
+                Get the code on GitHub</a>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 py-4 mt-12">
+        <div class="max-w-4xl mx-auto text-center text-gray-400 text-sm">
+            © 2026 DroneRFB‑Spectra – Open‑source under MIT License
+        </div>
+    </footer>
+</body>
+
+</html>
