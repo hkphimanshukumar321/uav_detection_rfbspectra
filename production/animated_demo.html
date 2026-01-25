@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RF Drone Detection System - Animated Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeIn 1s ease-in;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .scene {
+            position: relative;
+            height: 600px;
+            background: linear-gradient(180deg, #2d5016 0%, #1a3a0a 100%);
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            border: 3px solid #4a7023;
+        }
+
+        /* Mountains */
+        .mountains {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 200px;
+            background:
+                linear-gradient(120deg, transparent 40%, #1a2a1a 40%, #2a3a2a 60%, transparent 60%),
+                linear-gradient(240deg, transparent 30%, #2a3a2a 30%, #1a2a1a 50%, transparent 50%);
+            z-index: 1;
+        }
+
+        /* Sensor Node */
+        .sensor-node {
+            position: absolute;
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 2s ease-in;
+            z-index: 10;
+        }
+
+        .node1 {
+            left: 15%;
+            top: 40%;
+        }
+
+        .node2 {
+            left: 35%;
+            top: 35%;
+        }
+
+        .node3 {
+            left: 55%;
+            top: 38%;
+        }
+
+        .node-box {
+            width: 40px;
+            height: 50px;
+            background: linear-gradient(145deg, #555, #333);
+            border: 2px solid #888;
+            border-radius: 5px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .solar-panel {
+            width: 50px;
+            height: 20px;
+            background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+            border: 1px solid #60a5fa;
+            border-radius: 3px;
+            margin-bottom: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .solar-panel::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+            animation: solarGleam 3s infinite;
+        }
+
+        @keyframes solarGleam {
+            0% {
+                left: -100%;
+            }
+
+            50%,
+            100% {
+                left: 150%;
+            }
+        }
+
+        .antenna {
+            width: 3px;
+            height: 30px;
+            background: linear-gradient(180deg, #888, #444);
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .antenna::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 8px;
+            height: 8px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ff6b6b;
+            animation: pulse 2s infinite;
+        }
+
+        .node-label {
+            margin-top: 10px;
+            font-size: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 3px 8px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        .hw-label {
+            position: absolute;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 9px;
+            white-space: nowrap;
+            border: 1px solid #ffd700;
+            opacity: 0;
+            animation: labelFade 1s 1s forwards;
+        }
+
+        @keyframes labelFade {
+            to {
+                opacity: 1;
+            }
+        }
+
+        /* Detection radius */
+        .detection-radius {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border: 2px dashed rgba(100, 200, 255, 0.4);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: radarSweep 4s infinite;
+        }
+
+        @keyframes radarSweep {
+
+            0%,
+            100% {
+                transform: translate(-50%, -50%) scale(0.8);
+                opacity: 0.2;
+            }
+
+            50% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 0.6;
+            }
+        }
+
+        /* Drone */
+        .drone {
+            position: absolute;
+            left: 45%;
+            top: 25%;
+            width: 60px;
+            height: 60px;
+            animation: droneEnter 3s ease-in-out infinite;
+            z-index: 5;
+        }
+
+        .drone-body {
+            width: 20px;
+            height: 20px;
+            background: #ff4444;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 3px;
+            box-shadow: 0 0 15px rgba(255, 68, 68, 0.8);
+        }
+
+        .drone-prop {
+            width: 15px;
+            height: 15px;
+            border: 2px solid #666;
+            border-radius: 50%;
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            animation: propSpin 0.3s linear infinite;
+        }
+
+        .drone-prop:nth-child(1) {
+            top: 0;
+            left: 0;
+        }
+
+        .drone-prop:nth-child(2) {
+            top: 0;
+            right: 0;
+        }
+
+        .drone-prop:nth-child(3) {
+            bottom: 0;
+            left: 0;
+        }
+
+        .drone-prop:nth-child(4) {
+            bottom: 0;
+            right: 0;
+        }
+
+        @keyframes propSpin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes droneEnter {
+            0% {
+                transform: translate(-200px, -50px) scale(0.5);
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(0, 0) scale(1);
+            }
+        }
+
+        .drone-label {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 68, 68, 0.9);
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            white-space: nowrap;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* RF Waves */
+        .rf-wave {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 100px;
+            height: 100px;
+            border: 3px solid rgba(255, 107, 107, 0.6);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            animation: waveExpand 2s infinite;
+        }
+
+        .rf-wave:nth-child(2) {
+            animation-delay: 0.5s;
+        }
+
+        .rf-wave:nth-child(3) {
+            animation-delay: 1s;
+        }
+
+        @keyframes waveExpand {
+            0% {
+                width: 60px;
+                height: 60px;
+                opacity: 0.8;
+            }
+
+            100% {
+                width: 200px;
+                height: 200px;
+                opacity: 0;
+            }
+        }
+
+        /* LoRa Connection Lines */
+        .lora-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff88, transparent);
+            transform-origin: left center;
+            opacity: 0;
+            z-index: 2;
+        }
+
+        .line1 {
+            left: 18%;
+            top: 50%;
+            width: 250px;
+            transform: rotate(-5deg);
+            animation: signalFlow 4s 2s infinite;
+        }
+
+        .line2 {
+            left: 38%;
+            top: 48%;
+            width: 220px;
+            transform: rotate(-3deg);
+            animation: signalFlow 4s 2.5s infinite;
+        }
+
+        @keyframes signalFlow {
+
+            0%,
+            100% {
+                opacity: 0;
+            }
+
+            10%,
+            90% {
+                opacity: 0.8;
+            }
+        }
+
+        /* Signal packet */
+        .signal-packet {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #00ff88;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #00ff88;
+            opacity: 0;
+        }
+
+        .packet1 {
+            animation: movePacket1 4s 2s infinite;
+        }
+
+        .packet2 {
+            animation: movePacket2 4s 2.5s infinite;
+        }
+
+        @keyframes movePacket1 {
+            0% {
+                left: 18%;
+                top: 50%;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            50% {
+                left: 43%;
+                top: 48%;
+                opacity: 1;
+            }
+
+            60%,
+            100% {
+                left: 43%;
+                top: 48%;
+                opacity: 0;
+            }
+        }
+
+        @keyframes movePacket2 {
+            0% {
+                left: 38%;
+                top: 48%;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            50% {
+                left: 63%;
+                top: 45%;
+                opacity: 1;
+            }
+
+            60%,
+            100% {
+                left: 63%;
+                top: 45%;
+                opacity: 0;
+            }
+        }
+
+        /* Relay Station */
+        .relay-station {
+            position: absolute;
+            left: 65%;
+            top: 42%;
+            width: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .relay-tower {
+            width: 8px;
+            height: 60px;
+            background: linear-gradient(180deg, #888, #444);
+            position: relative;
+        }
+
+        .relay-dish {
+            width: 40px;
+            height: 25px;
+            background: linear-gradient(145deg, #666, #444);
+            border: 2px solid #888;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            margin-bottom: 5px;
+        }
+
+        .relay-label {
+            margin-top: 5px;
+            font-size: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 3px 8px;
+            border-radius: 10px;
+        }
+
+        /* Base Station */
+        .base-station {
+            position: absolute;
+            right: 10%;
+            bottom: 20%;
+            width: 100px;
+            z-index: 10;
+        }
+
+        .base-building {
+            width: 80px;
+            height: 60px;
+            background: linear-gradient(145deg, #555, #333);
+            border: 2px solid #888;
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .base-roof {
+            width: 90px;
+            height: 15px;
+            background: linear-gradient(145deg, #666, #444);
+            border: 2px solid #888;
+            position: absolute;
+            top: -15px;
+            left: -5px;
+            transform: perspective(50px) rotateX(20deg);
+        }
+
+        .satellite-dish {
+            position: absolute;
+            top: -40px;
+            right: 10px;
+            width: 30px;
+            height: 20px;
+            background: linear-gradient(145deg, #888, #555);
+            border: 2px solid #aaa;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        }
+
+        .base-label {
+            margin-top: 10px;
+            font-size: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 3px 8px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        /* Alert indicator */
+        .alert-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 0, 0, 0.9);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 14px;
+            border: 2px solid #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            animation: alertPulse 1s 4s infinite;
+            opacity: 0;
+        }
+
+        @keyframes alertPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.7;
+                transform: scale(1.05);
+            }
+        }
+
+        /* Timeline */
+        .timeline {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+
+        .timeline-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #ffd700;
+        }
+
+        .timeline-events {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .event {
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid #00ff88;
+            border-radius: 5px;
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+
+        .event.active {
+            animation: eventSlideIn 0.5s forwards;
+        }
+
+        @keyframes eventSlideIn {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event-time {
+            color: #ffd700;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .event-desc {
+            display: inline;
+        }
+
+        /* Hardware Info */
+        .hardware-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .hw-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .hw-card h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .hw-spec {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hw-spec:last-child {
+            border-bottom: none;
+        }
+
+        .spec-label {
+            opacity: 0.8;
+        }
+
+        .spec-value {
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        /* Controls */
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            margin: 0 10px;
+            background: linear-gradient(145deg, #4a7023, #3a5018);
+            border: 2px solid #5a8033;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: linear-gradient(145deg, #5a8033, #4a7023);
+            box-shadow: 0 0 15px rgba(90, 128, 51, 0.5);
+            transform: translateY(-2px);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🎖️ Military RF Drone Detection System</h1>
+        <p>Real-Time Edge AI Detection in Remote Forest Deployment</p>
+    </div>
+
+    <div class="container">
+        <!-- Animated Scene -->
+        <div class="scene">
+            <!-- Mountains -->
+            <div class="mountains"></div>
+
+            <!-- Alert Indicator -->
+            <div class="alert-indicator">
+                ⚠️ DRONE DETECTED - GRID N2
+            </div>
+
+            <!-- Drone with RF waves -->
+            <div class="drone">
+                <div class="rf-wave"></div>
+                <div class="rf-wave"></div>
+                <div class="rf-wave"></div>
+                <div class="drone-prop"></div>
+                <div class="drone-prop"></div>
+                <div class="drone-prop"></div>
+                <div class="drone-prop"></div>
+                <div class="drone-body"></div>
+                <div class="drone-label">DJI Mavic Air</div>
+            </div>
+
+            <!-- Sensor Nodes -->
+            <div class="sensor-node node1">
+                <div class="hw-label">Pi4 + RTL-SDR<br />Solar Powered</div>
+                <div class="solar-panel"></div>
+                <div class="node-box">
+                    <div class="antenna"></div>
+                </div>
+                <div class="detection-radius"></div>
+                <div class="node-label">Node N1</div>
+            </div>
+
+            <div class="sensor-node node2">
+                <div class="hw-label">Edge AI Processing<br />~20ms Latency</div>
+                <div class="solar-panel"></div>
+                <div class="node-box">
+                    <div class="antenna"></div>
+                </div>
+                <div class="detection-radius"></div>
+                <div class="node-label">Node N2 🎯</div>
+            </div>
+
+            <div class="sensor-node node3">
+                <div class="hw-label">LoRa 15km Range<br />Battery Backup</div>
+                <div class="solar-panel"></div>
+                <div class="node-box">
+                    <div class="antenna"></div>
+                </div>
+                <div class="detection-radius"></div>
+                <div class="node-label">Node N3</div>
+            </div>
+
+            <!-- LoRa Connection Lines -->
+            <div class="lora-line line1"></div>
+            <div class="lora-line line2"></div>
+            <div class="signal-packet packet1"></div>
+            <div class="signal-packet packet2"></div>
+
+            <!-- Relay Station -->
+            <div class="relay-station">
+                <div class="relay-dish"></div>
+                <div class="relay-tower"></div>
+                <div class="relay-label">Relay Station</div>
+            </div>
+
+            <!-- Base Station -->
+            <div class="base-station">
+                <div class="satellite-dish"></div>
+                <div class="base-building">
+                    <div class="base-roof"></div>
+                </div>
+                <div class="base-label">Command Center</div>
+            </div>
+        </div>
+
+        <!-- Event Timeline -->
+        <div class="timeline">
+            <div class="timeline-title">📊 Real-Time Event Log</div>
+            <div class="timeline-events" id="events">
+                <div class="event" data-time="0">
+                    <span class="event-time">T+0.00s</span>
+                    <span class="event-desc">🚁 Drone enters detection zone (Grid N2)</span>
+                </div>
+                <div class="event" data-time="2">
+                    <span class="event-time">T+0.05s</span>
+                    <span class="event-desc">📡 RTL-SDR captures RF signals @ 2.437 GHz</span>
+                </div>
+                <div class="event" data-time="4">
+                    <span class="event-time">T+0.07s</span>
+                    <span class="event-desc">⚙️ Raspberry Pi: STFT → Log → Resize → Binarize (15ms)</span>
+                </div>
+                <div class="event" data-time="6">
+                    <span class="event-time">T+0.09s</span>
+                    <span class="event-desc">🧠 RF-DenseNet inference: "DJI Mavic Air" (96.5% confidence)</span>
+                </div>
+                <div class="event" data-time="8">
+                    <span class="event-time">T+0.10s</span>
+                    <span class="event-desc">📤 LoRa transmission: Alert packet sent to relay</span>
+                </div>
+                <div class="event" data-time="10">
+                    <span class="event-time">T+1.50s</span>
+                    <span class="event-desc">🔁 Relay station forwards alert to base (15km)</span>
+                </div>
+                <div class="event" data-time="12">
+                    <span class="event-time">T+2.00s</span>
+                    <span class="event-desc">🎯 Command center: Alert displayed on dashboard</span>
+                </div>
+                <div class="event" data-time="14">
+                    <span class="event-time">T+2.50s</span>
+                    <span class="event-desc">📱 Automated SMS sent to patrol team</span>
+                </div>
+                <div class="event" data-time="16">
+                    <span class="event-time">T+180s</span>
+                    <span class="event-desc">👥 Response team deployed to Grid N2</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hardware Specifications -->
+        <div class="hardware-info">
+            <div class="hw-card">
+                <h3>🔧 Sensor Node Hardware</h3>
+                <div class="hw-spec">
+                    <span class="spec-label">Processor</span>
+                    <span class="spec-value">Raspberry Pi 4 (4GB)</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">RF Receiver</span>
+                    <span class="spec-value">RTL-SDR Blog V3</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Power</span>
+                    <span class="spec-value">20W Solar + 20Ah Battery</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Communication</span>
+                    <span class="spec-value">LoRa (15km range)</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Cost</span>
+                    <span class="spec-value">$225 per node</span>
+                </div>
+            </div>
+
+            <div class="hw-card">
+                <h3>⚡ Performance Metrics</h3>
+                <div class=" hw-spec">
+                    <span class="spec-label">Detection Latency</span>
+                    <span class="spec-value">&lt; 20ms</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Alert Latency</span>
+                    <span class="spec-value">&lt; 2 seconds</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Accuracy</span>
+                    <span class="spec-value">96.5%</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Detection Range</span>
+                    <span class="spec-value">2km radius</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Battery Life</span>
+                    <span class="spec-value">7 days (no sun)</span>
+                </div>
+            </div>
+
+            <div class="hw-card">
+                <h3>🌍 Deployment Specs</h3>
+                <div class="hw-spec">
+                    <span class="spec-label">Temperature Range</span>
+                    <span class="spec-value">-10°C to +40°C</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Weatherproofing</span>
+                    <span class="spec-value">IP67 Rated</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Installation Time</span>
+                    <span class="spec-value">1 hour per node</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Coverage (10km)</span>
+                    <span class="spec-value">15 nodes @ $3,375</span>
+                </div>
+                <div class="hw-spec">
+                    <span class="spec-label">Maintenance</span>
+                    <span class="spec-value">Quarterly</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn" onclick="restartAnimation()">🔄 Restart Animation</button>
+            <button class="btn" onclick="togglePause()">⏸️ Pause/Resume</button>
+        </div>
+    </div>
+
+    <script>
+        let animationStartTime = Date.now();
+        let isPaused = false;
+        let pauseTime = 0;
+
+        function activateEvents() {
+            const events = document.querySelectorAll('.event');
+            const currentTime = (Date.now() - animationStartTime - pauseTime) / 1000;
+
+            events.forEach(event => {
+                const eventTime = parseFloat(event.dataset.time);
+                if (currentTime >= eventTime && !event.classList.contains('active')) {
+                    event.classList.add('active');
+                }
+            });
+
+            if (!isPaused) {
+                requestAnimationFrame(activateEvents);
+            }
+        }
+
+        function restartAnimation() {
+            // Remove active class from all events
+            document.querySelectorAll('.event').forEach(e => e.classList.remove('active'));
+
+            // Restart animations by re-adding classes
+            const scene = document.querySelector('.scene');
+            scene.style.animation = 'none';
+            setTimeout(() => {
+                scene.style.animation = '';
+                animationStartTime = Date.now();
+                pauseTime = 0;
+                isPaused = false;
+                activateEvents();
+            }, 10);
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            if (isPaused) {
+                pauseTime -= Date.now();
+            } else {
+                pauseTime += Date.now();
+                activateEvents();
+            }
+        }
+
+        // Start event activation
+        activateEvents();
+
+        // Auto-restart every 20 seconds
+        setInterval(restartAnimation, 20000);
+    </script>
+</body>
+
+</html>

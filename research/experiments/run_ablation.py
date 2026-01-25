@@ -5,7 +5,7 @@ from pathlib import Path
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.config import ResearchConfig, print_experiment_summary
+from src.config import ExperimentConfig
 from src.training import train_model
 from src.models import build_rf_densenet
 
