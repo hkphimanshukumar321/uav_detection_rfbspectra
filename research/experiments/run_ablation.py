@@ -2,12 +2,12 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path
+# Add research root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.config import ExperimentConfig
+from config import ResearchConfig, print_experiment_summary
 from src.training import train_model
-from src.models import build_rf_densenet
+from src.models import create_rf_densenet
 
 def run_ablation(config_path=None):
     """Run complete ablation study."""
