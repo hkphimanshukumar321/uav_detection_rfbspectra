@@ -45,8 +45,9 @@ class ModelConfig:
 @dataclass
 class TrainingConfig:
     """Training configuration optimized for research experiments."""
-    epochs: int = 10  # Reduced for CPU training (increase if GPU available)
-    batch_size: int = 32
+    epochs: int = 40
+      # Reduced for CPU training (increase if GPU available)
+    batch_size: int = 5
     learning_rate: float = 1e-3
     seed: int = 42
     early_stopping_patience: int = 10
@@ -71,19 +72,20 @@ class AblationConfig:
     Time savings: ~50% while maintaining research rigor
     """
     # Reduced for CPU training (add more if GPU available)
-    growth_rates: List[int] = field(default_factory=lambda: [4, 8])
+    growth_rates: List[int] = field(default_factory=lambda: [4, 8 ,12])
     
     # Key compression factors (reduced for CPU)
-    compressions: List[float] = field(default_factory=lambda: [0.5])
+    compressions: List[float] = field(default_factory=lambda: [0.25,0.5,0.75])
     
     # Representative depth configurations (reduced for CPU)
     depths: List[Tuple[int, int, int]] = field(default_factory=lambda: [
         (2, 2, 2),  # Shallow
         (3, 3, 3),  # Medium (default)
+        (4,4,4)
     ])
     
     # Edge-relevant batch sizes (includes small batches for edge simulation)
-    batch_sizes: List[int] = field(default_factory=lambda: [8, 16, 32, 64])
+    batch_sizes: List[int] = field(default_factory=lambda: [5,10,20])
     
     # Resolution sweep for input size ablation
     resolutions: List[int] = field(default_factory=lambda: [32, 64, 128])
@@ -142,13 +144,9 @@ class ExperimentConfig:
     test_snr_robustness: bool = True
     snr_levels_db: List[int] = field(default_factory=lambda: [0, 5, 10, 15, 20, 25, 30])
     
-    # Binarization ablation
-    test_binarization: bool = True
-    binarization_methods: List[str] = field(default_factory=lambda: [
-        'otsu',      # Automatic threshold
-        'mean',      # Mean-based threshold
-        'adaptive',  # Adaptive threshold
-    ])
+    # Binarization - Using Otsu only (no ablation needed)
+    test_binarization: bool = False  # Disabled - using Otsu by default
+    binarization_methods: List[str] = field(default_factory=lambda: ['otsu'])
     
     # Learning curve (data efficiency)
     test_learning_curve: bool = True

@@ -340,5 +340,3 @@ Time 14:32:15 - Node N7 detects DJI Mavic Air
 ---
 
 ## Question 4: Visual Diagram
-
-I'll generate a comprehensive image showing the military deployment scenario.
