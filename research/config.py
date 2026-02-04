@@ -54,7 +54,7 @@ class TrainingConfig:
     snr_levels_db: List[int] = field(default_factory=lambda: [0, 5, 10, 15, 20, 25, 30])
     
     # Training callbacks
-    early_stopping_patience: int = 10
+    early_stopping_patience: int = 15  # Increased to prevent premature stopping
     gradient_clip_value: float = 1.0
 
 

@@ -88,8 +88,17 @@ def run_snr_robustness(quick_test: bool = False):
     print(f"  Loaded: {len(X)} samples")
     
     X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(
-        X, Y, train_ratio=0.7, val_ratio=0.15, seed=config.training.seeds[0]
+        X, Y, test_size=0.15, val_size=0.15, seed=config.training.seeds[0]
     )
+    
+    # Calculate class weights for imbalance handling
+    from sklearn.utils import class_weight
+    class_weights_vals = class_weight.compute_class_weight(
+        class_weight='balanced',
+        classes=np.unique(y_train),
+        y=y_train
+    )
+    class_weights = dict(enumerate(class_weights_vals))
     
     num_classes = len(categories)
     input_shape = (config.data.img_size[0], config.data.img_size[1], 3)
@@ -112,14 +121,17 @@ def run_snr_robustness(quick_test: bool = False):
     run_dir = results_dir / "clean_model"
     run_dir.mkdir(parents=True, exist_ok=True)
     
-    train_model(
+    history = train_model(
         model=model,
         X_train=X_train, y_train=y_train,
         X_val=X_val, y_val=y_val,
         run_dir=run_dir,
         epochs=epochs,
-        batch_size=config.training.batch_size
+        batch_size=config.training.batch_size,
+        class_weights=class_weights,
+        early_stopping_patience=config.training.early_stopping_patience
     )
+
     
     # Test on clean data first
     clean_loss, clean_acc = model.evaluate(X_test, y_test, verbose=0)

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-02-04T21:25:29.133160",
+  "timestamp": "2026-02-05T00:23:32.256445",
   "total_passed": 17,
   "total_failed": 5,
   "all_tests_pass": false,
@@ -18,7 +18,7 @@
         ],
         [
           "Data loading utilities (src.data_loader)",
-          "No module named 'cv2'"
+          "No module named 'tensorflow'"
         ],
         [
           "ResearchConfig class imports",

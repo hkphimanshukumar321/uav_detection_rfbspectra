@@ -12,7 +12,10 @@ import time
 import numpy as np
 from pathlib import Path
 import pandas as pd
+import pandas as pd
 from sklearn.model_selection import StratifiedKFold
+import tensorflow as tf
+from sklearn.utils import class_weight
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -80,10 +83,20 @@ def run_cross_validation(quick_test: bool = False):
         X_train, X_test = X[train_idx], X[test_idx]
         y_train, y_test = Y[train_idx], Y[test_idx]
         
-        # Split train into train/val (85/15)
-        val_size = int(0.15 * len(X_train))
-        X_val, y_val = X_train[:val_size], y_train[:val_size]
-        X_train, y_train = X_train[val_size:], y_train[val_size:]
+        # Validation split from training (stratified)
+        from sklearn.model_selection import train_test_split
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train, y_train, test_size=0.15, stratify=y_train, 
+            random_state=config.training.seeds[0]
+        )
+        
+        # Calculate class weights
+        class_weights_vals = class_weight.compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        class_weights = dict(enumerate(class_weights_vals))
         
         # Create model
         model = create_rf_densenet(
@@ -107,7 +120,9 @@ def run_cross_validation(quick_test: bool = False):
             X_val=X_val, y_val=y_val,
             run_dir=run_dir,
             epochs=epochs,
-            batch_size=config.training.batch_size
+            batch_size=config.training.batch_size,
+            class_weights=class_weights,
+            early_stopping_patience=config.training.early_stopping_patience
         )
         
         # Evaluate
@@ -122,6 +137,7 @@ def run_cross_validation(quick_test: bool = False):
         
         print(f"  Fold {fold}: Accuracy = {test_acc*100:.2f}%")
         close_all_figures()
+        tf.keras.backend.clear_session()
     
     # Save results
     results_df = pd.DataFrame(fold_results)

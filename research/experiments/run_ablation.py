@@ -231,7 +231,7 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
             X_exp, Y_exp = X, Y
         
         X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(
-            X_exp, Y_exp, train_ratio=0.7, val_ratio=0.15, seed=seed
+            X_exp, Y_exp, test_size=0.15, val_size=0.15, seed=seed
         )
         
         # Calculate class weights for imbalance handling
@@ -293,6 +293,9 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
         model_size_kb = (metrics_info.total_params * 4) / 1024  # float32 = 4 bytes
         # Estimate memory: model + gradients + activations (rough: 3x model size)
         memory_mb = (model_size_kb * 3) / 1024
+        
+        # Cleanup to prevent OOM
+        tf.keras.backend.clear_session()
         
         return {
             'experiment_id': exp_id,

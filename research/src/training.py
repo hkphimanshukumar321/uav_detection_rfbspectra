@@ -222,19 +222,19 @@ def create_callbacks(
     
     callbacks = [
         EarlyStopping(
-            monitor='val_loss',
+            monitor='val_accuracy',  # Switched to accuracy as per user request
             patience=patience_early,
-            min_delta=0.001,  # Minimum change to qualify as improvement
+            min_delta=0,  # Removed threshold - any improvement counts
             restore_best_weights=True,
             verbose=1,
-            mode='min'  # Explicitly set mode for val_loss
+            mode='max'
         ),
         ReduceLROnPlateau(
             monitor='val_loss',
             factor=lr_factor,
             patience=patience_lr,
             min_lr=min_lr,
-            min_delta=0.001,
+            min_delta=1e-4,
             verbose=1
         ),
         ModelCheckpoint(
