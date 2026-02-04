@@ -43,14 +43,14 @@ class TrainingConfig:
     
     # Multiple seeds for statistical significance (mean ± std)
     use_multiple_seeds: bool = True  # False = 1 seed (fast), True = 3 seeds
-    seeds: List[int] = field(default_factory=lambda: [42, 123, 456])
+    seeds: List[int] = field(default_factory=lambda: [42, 123])
     
     # Cross-validation (5-fold) - tests generalization across data splits
-    enable_cross_validation: bool = False  # Set True on 4-GPU machine
+    enable_cross_validation: bool = True  # Set True on 4-GPU machine
     cv_folds: int = 5
     
     # SNR robustness testing - tests performance under noise
-    enable_snr_testing: bool = False  # Set True on 4-GPU machine
+    enable_snr_testing: bool = True  # Set True on 4-GPU machine
     snr_levels_db: List[int] = field(default_factory=lambda: [0, 5, 10, 15, 20, 25, 30])
     
     # Training callbacks
