@@ -230,9 +230,12 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
         else:
             X_exp, Y_exp = X, Y
         
-        X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(
+        splits = split_dataset(
             X_exp, Y_exp, test_size=0.15, val_size=0.15, seed=seed
         )
+        X_train, y_train = splits['train']
+        X_val, y_val = splits['val']
+        X_test, y_test = splits['test']
         
         # Calculate class weights for imbalance handling
         from sklearn.utils import class_weight

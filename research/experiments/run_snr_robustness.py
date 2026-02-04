@@ -87,9 +87,12 @@ def run_snr_robustness(quick_test: bool = False):
     )
     print(f"  Loaded: {len(X)} samples")
     
-    X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(
+    splits = split_dataset(
         X, Y, test_size=0.15, val_size=0.15, seed=config.training.seeds[0]
     )
+    X_train, y_train = splits['train']
+    X_val, y_val = splits['val']
+    X_test, y_test = splits['test']
     
     # Calculate class weights for imbalance handling
     from sklearn.utils import class_weight
