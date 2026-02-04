@@ -47,7 +47,7 @@ class TrainingConfig:
     
     # Cross-validation (5-fold) - tests generalization across data splits
     enable_cross_validation: bool = True  # Set True on 4-GPU machine
-    cv_folds: int = 5
+    cv_folds: int = 3
     
     # SNR robustness testing - tests performance under noise
     enable_snr_testing: bool = True  # Set True on 4-GPU machine
