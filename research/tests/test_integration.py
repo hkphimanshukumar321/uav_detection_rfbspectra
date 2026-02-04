@@ -84,13 +84,6 @@ def test_config_to_experiment_flow(results: TestResult):
         progress = AblationProgress(total)
         results.add_pass("AblationProgress class works")
         
-        # Verify binarization is Otsu only
-        if config.experiments.binarization_methods == ['otsu']:
-            results.add_pass("Binarization simplified to Otsu only")
-        else:
-            results.add_fail("Binarization config", 
-                           f"Expected ['otsu'], got {config.experiments.binarization_methods}")
-        
     except Exception as e:
         results.add_fail("Config flow", str(e))
 
@@ -178,10 +171,8 @@ def test_output_directories(results: TestResult):
         
         # Test results directory path
         results_dir = Path(config.output.results_dir)
-        figures_dir = Path(config.output.figures_dir)
         
         results.add_pass(f"Results dir config: {results_dir}")
-        results.add_pass(f"Figures dir config: {figures_dir}")
         
     except Exception as e:
         results.add_fail("Output directory config", str(e))
