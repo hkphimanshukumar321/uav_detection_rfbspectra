@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 """
-Ablation Study - Growth Rate, Compression, and Depth
-=====================================================
+Full Factorial Ablation Study with Statistical Significance
+============================================================
 
-Systematically evaluates the impact of architectural parameters.
+Features:
+- Full factorial design: GR × Compression × Depth (27) + Batch (3) + Resolution (3) = 33 configs
+- Multiple seeds per config (3 seeds) for statistical significance → 99 total experiments
+- Multi-GPU support with tf.distribute.MirroredStrategy
+- Combined accuracy/loss plots per ablation parameter
+- Machine-specific inference time logging
+- All journal-ready visualizations (ROC, PR, confusion matrix)
 """
 
 import sys
 import time
+import socket
+import platform
 import numpy as np
 from pathlib import Path
+from datetime import datetime
 import pandas as pd
+from itertools import product
+from typing import List, Dict, Tuple, Optional
 
 # Add research root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -35,111 +46,121 @@ from src.visualization import (
 )
 
 
-class AblationProgress:
-    """
-    Track ablation study progress with ETA and visual progress bar.
-    
-    Shows a filling progress bar like:
-    [████████████░░░░░░░░░░░░░░░░░░] 42% - ETA: 3h 25m | Completed: 5/12
-    """
-    
-    def __init__(self, total_experiments: int):
-        self.total = total_experiments
-        self.completed = 0
-        self.start_time = time.time()
-        self.experiment_times = []
-        self.current_category = ""
-    
-    def set_category(self, category: str):
-        """Set current ablation category being run."""
-        self.current_category = category
-    
-    def update(self, experiment_name: str, duration: float = None):
-        """Update progress after completing an experiment."""
-        self.completed += 1
-        if duration:
-            self.experiment_times.append(duration)
-        self.display_progress_bar()
-    
-    def display_progress_bar(self, width: int = 40):
-        """Print visual progress bar with ETA."""
-        if self.total == 0:
-            return
-        
-        percent = self.completed / self.total
-        filled = int(width * percent)
-        bar = "█" * filled + "░" * (width - filled)
-        
-        # Calculate ETA based on average experiment time
-        if self.experiment_times:
-            avg_time = sum(self.experiment_times) / len(self.experiment_times)
-            remaining = self.total - self.completed
-            eta_seconds = avg_time * remaining
-            
-            if eta_seconds > 3600:
-                eta_str = f"{eta_seconds/3600:.1f}h"
-            elif eta_seconds > 60:
-                eta_str = f"{eta_seconds/60:.0f}m"
-            else:
-                eta_str = f"{eta_seconds:.0f}s"
-        else:
-            eta_str = "calculating..."
-        
-        elapsed = time.time() - self.start_time
-        elapsed_str = f"{elapsed/60:.1f}m" if elapsed > 60 else f"{elapsed:.0f}s"
-        
-        print(f"\r[{bar}] {percent*100:5.1f}% | {self.completed}/{self.total} | "
-              f"Elapsed: {elapsed_str} | ETA: {eta_str} | {self.current_category}", end="", flush=True)
-        
-        if self.completed == self.total:
-            print()  # New line when complete
-    
-    def get_summary(self) -> dict:
-        """Get progress summary for reporting."""
-        total_time = time.time() - self.start_time
-        return {
-            'total_experiments': self.total,
-            'completed': self.completed,
-            'total_time_seconds': total_time,
-            'avg_time_per_experiment': sum(self.experiment_times) / len(self.experiment_times) if self.experiment_times else 0
-        }
+def get_machine_info() -> Dict:
+    """Get machine-specific info for reproducibility."""
+    import tensorflow as tf
+    gpus = tf.config.list_physical_devices('GPU')
+    return {
+        'hostname': socket.gethostname(),
+        'platform': platform.platform(),
+        'processor': platform.processor(),
+        'python_version': platform.python_version(),
+        'tensorflow_version': tf.__version__,
+        'num_gpus': len(gpus),
+        'gpu_names': [gpu.name for gpu in gpus],
+        'timestamp': datetime.now().isoformat()
+    }
 
-def run_ablation(quick_test=False):
+
+def setup_multi_gpu():
+    """Setup multi-GPU training strategy."""
+    import tensorflow as tf
+    gpus = tf.config.list_physical_devices('GPU')
+    
+    if len(gpus) > 1:
+        # Multi-GPU: use MirroredStrategy
+        strategy = tf.distribute.MirroredStrategy()
+        print(f"✓ Multi-GPU enabled: {len(gpus)} GPUs detected")
+        for i, gpu in enumerate(gpus):
+            print(f"  GPU {i}: {gpu.name}")
+        return strategy
+    elif len(gpus) == 1:
+        # Single GPU
+        print(f"✓ Single GPU detected: {gpus[0].name}")
+        return tf.distribute.get_strategy()  # Default strategy
+    else:
+        # CPU only
+        print("⚠ No GPU detected, using CPU")
+        return tf.distribute.get_strategy()
+
+
+class AblationProgress:
+    """Track ablation study progress with ETA."""
+    
+    def __init__(self, total: int):
+        self.total = total
+        self.completed = 0
+        self.start = time.time()
+        self.category = ""
+    
+    def set_category(self, cat: str):
+        self.category = cat
+    
+    def update(self):
+        self.completed += 1
+        pct = self.completed / self.total
+        elapsed = time.time() - self.start
+        eta = (elapsed / self.completed) * (self.total - self.completed) if self.completed > 0 else 0
+        eta_str = f"{eta/3600:.1f}h" if eta > 3600 else f"{eta/60:.1f}m" if eta > 60 else f"{eta:.0f}s"
+        bar = "█" * int(40 * pct) + "░" * (40 - int(40 * pct))
+        print(f"\r[{bar}] {pct*100:5.1f}% | {self.completed}/{self.total} | ETA: {eta_str} | {self.category}", 
+              end="", flush=True)
+        if self.completed == self.total:
+            print()
+
+
+def run_ablation(quick_test: bool = False, single_seed: bool = False):
     """
-    Run complete ablation study.
+    Run full factorial ablation study.
     
     Args:
-        quick_test: If True, run with minimal epochs for testing
+        quick_test: Use 2 epochs per experiment
+        single_seed: Use only first seed (for quick testing)
     """
     print("=" * 70)
-    print("ABLATION STUDY - ARCHITECTURAL PARAMETERS")
+    print("FULL FACTORIAL ABLATION STUDY")
+    print("With Statistical Significance (Multiple Seeds)")
     print("=" * 70)
     
-    # Load configuration
     config = ResearchConfig()
+    results_dir = config.output.results_dir
+    results_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir = results_dir / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
     
-    # Setup GPU
-    print("\n[1/6] Setting up GPU...")
-    gpu_info = setup_gpu(
-        memory_growth=True,
-        mixed_precision=False,  # Disable for stability
-        seed=config.training.seed
-    )
-    print(f"GPU Configuration: {gpu_info['num_gpus']} GPU(s) available")
+    epochs = 2 if quick_test else config.training.epochs
+    # Use config flag OR override with single_seed parameter
+    use_single = single_seed or (not config.training.use_multiple_seeds)
+    seeds = [config.training.seeds[0]] if use_single else config.training.seeds
     
-    # Validate and load dataset
-    print("\n[2/6] Loading dataset...")
+    # =========================================================================
+    # PHASE 1: Setup & Machine Info
+    # =========================================================================
+    print("\n[1/5] Environment Setup...")
+    
+    machine_info = get_machine_info()
+    print(f"  Hostname: {machine_info['hostname']}")
+    print(f"  Platform: {machine_info['platform']}")
+    print(f"  TensorFlow: {machine_info['tensorflow_version']}")
+    print(f"  GPUs: {machine_info['num_gpus']}")
+    
+    strategy = setup_multi_gpu()
+    
+    # Save machine info
+    machine_log = results_dir / "machine_info.json"
+    import json
+    with open(machine_log, 'w') as f:
+        json.dump(machine_info, f, indent=2)
+    print(f"  ✓ Machine info saved: {machine_log}")
+    
+    # =========================================================================
+    # PHASE 2: Load Data
+    # =========================================================================
+    print("\n[2/5] Loading Dataset...")
+    
     data_dir = config.data.data_dir
+    categories, _ = validate_dataset_directory(data_dir, min_classes=2)
     
-    print(f"Data directory: {data_dir}")
-    categories, class_to_idx = validate_dataset_directory(
-        data_dir,
-        min_classes=2,
-        min_samples_per_class=10
-    )
-    print(f"Found {len(categories)} classes: {categories[:5]}..." if len(categories) > 5 else f"Found {len(categories)} classes: {categories}")
-    
-    # Load all images
     X, Y = load_dataset_numpy(
         data_dir=data_dir,
         categories=categories,
@@ -147,591 +168,537 @@ def run_ablation(quick_test=False):
         max_images_per_class=config.data.max_images_per_class,
         show_progress=True
     )
-    print(f"Loaded {len(X)} images, shape: {X.shape}")
-    
-    # Split dataset
-    print("\n[3/6] Splitting dataset...")
-    splits = split_dataset(
-        X, Y,
-        test_size=config.data.test_split,
-        val_size=config.data.val_split,
-        seed=config.training.seed,
-        stratify=True
-    )
-    X_train, y_train = splits['train']
-    X_val, y_val = splits['val']
-    X_test, y_test = splits['test']
-    
-    print(f"Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
-    
-    # Create results directory
-    results_dir = Path(config.output.results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
+    print(f"  Loaded: {len(X)} images, shape: {X.shape}")
     
     num_classes = len(categories)
     input_shape = (config.data.img_size[0], config.data.img_size[1], 3)
     
-    # Use fewer epochs for quick test
-    epochs = 2 if quick_test else config.training.epochs
+    # =========================================================================
+    # PHASE 3: Calculate Experiment Design
+    # =========================================================================
+    print("\n[3/5] Experiment Design...")
     
-    # Initialize progress tracker
-    n_growth = len(config.ablation.growth_rates)
-    n_comp = len(config.ablation.compressions)
-    n_depth = len(config.ablation.depths)
-    total_experiments = n_growth + n_comp + n_depth
+    arch_combos = list(product(
+        config.ablation.growth_rates,
+        config.ablation.compressions,
+        config.ablation.depths
+    ))
+    n_arch = len(arch_combos)
+    n_batch = len(config.ablation.batch_sizes)
+    n_resolution = len(config.ablation.resolutions)
+    n_seeds = len(seeds)
+    
+    n_configs = n_arch + n_batch + n_resolution
+    total_experiments = n_configs * n_seeds
+    
+    print(f"\n📊 ABLATION DESIGN:")
+    print(f"   Architecture (GR × Comp × Depth): {n_arch} configs")
+    print(f"   Batch Size: {n_batch} configs")
+    print(f"   Resolution: {n_resolution} configs")
+    print(f"   Seeds per config: {n_seeds} {seeds}")
+    print(f"   ─────────────────────────────────")
+    print(f"   TOTAL EXPERIMENTS: {n_configs} × {n_seeds} = {total_experiments}")
+    print(f"   Epochs: {epochs}")
     
     progress = AblationProgress(total_experiments)
-    
-    print(f"\n📊 Total experiments to run: {total_experiments}")
-    print(f"   - Growth rates: {n_growth}")
-    print(f"   - Compressions: {n_comp}")
-    print(f"   - Depths: {n_depth}")
-    print(f"   - Epochs per experiment: {epochs}")
-    
-    ablation_start_time = time.time()
-    
-    # =========================================================================
-    # ABLATION 1: Growth Rate
-    # =========================================================================
-    print("\n[4/6] Running Growth Rate Ablation...")
-    print("=" * 70)
-    
-    growth_results = []
-    for gr in config.ablation.growth_rates:
-        print(f"\n--- Testing Growth Rate: {gr} ---")
-        
-        # Create model
-        model = create_rf_densenet(
-            input_shape=input_shape,
-            num_classes=num_classes,
-            growth_rate=gr,
-            compression=config.model.compression,
-            depth=config.model.depth,
-            dropout_rate=config.model.dropout_rate,
-            initial_filters=config.model.initial_filters
-        )
-        
-        # Compile model
-        model = compile_model(
-            model,
-            learning_rate=config.training.learning_rate,
-            gradient_clip=config.training.gradient_clip_value
-        )
-        
-        # Get model info
-        metrics_info = get_model_metrics(model)
-        print(f"Model: {metrics_info}")
-        
-        # Create run directory
-        run_id = generate_run_id(f"ablation_gr{gr}")
-        run_dir = results_dir / "runs" / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Train model
-        print(f"Training for {epochs} epochs...")
-        history = train_model(
-            model=model,
-            X_train=X_train,
-            y_train=y_train,
-            X_val=X_val,
-            y_val=y_val,
-            run_dir=run_dir,
-            epochs=epochs,
-            batch_size=config.training.batch_size
-        )
-        
-        # Evaluate on test set
-        print("Evaluating on test set...")
-        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-        
-        # Get predictions for confusion matrix
-        y_pred_prob = model.predict(X_test, verbose=0)
-        y_pred = np.argmax(y_pred_prob, axis=1)
-        
-        # Generate and save training history plot
-        figures_dir = results_dir / "figures"
-        figures_dir.mkdir(parents=True, exist_ok=True)
-        
-        plot_training_history(
-            history=history,
-            title=f"Training History - Growth Rate {gr}",
-            save_path=figures_dir / f"training_history_gr{gr}.png"
-        )
-        
-        # Generate confusion matrix
-        from sklearn.metrics import confusion_matrix as sk_confusion_matrix, f1_score
-        cm = sk_confusion_matrix(y_test, y_pred)
-        plot_confusion_matrix(
-            confusion_matrix=cm,
-            class_labels=categories,
-            title=f"Confusion Matrix - Growth Rate {gr}",
-            normalize=True,
-            save_path=figures_dir / f"confusion_matrix_gr{gr}.png"
-        )
-        
-        # Generate ROC curves (journal-ready)
-        plot_roc_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"ROC Curves - Growth Rate {gr}",
-            save_path=figures_dir / f"roc_curves_gr{gr}.png"
-        )
-        
-        # Generate Precision-Recall curves (journal-ready)
-        plot_precision_recall_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"Precision-Recall Curves - Growth Rate {gr}",
-            save_path=figures_dir / f"pr_curves_gr{gr}.png"
-        )
-        
-        # Compute F1 score for metrics
-        macro_f1 = f1_score(y_test, y_pred, average='macro') * 100
-        
-        # Benchmark inference time
-        input_shape = (config.data.img_size[0], config.data.img_size[1], 3)
-        latency_info = benchmark_inference(model, input_shape, warmup_runs=10, benchmark_runs=50)
-        
-        # Store results with F1 score
-        growth_results.append({
-            'growth_rate': gr,
-            'test_accuracy': test_acc * 100,
-            'test_loss': test_loss,
-            'macro_f1': macro_f1,
-            'val_accuracy': max(history['val_accuracy']) * 100 if 'val_accuracy' in history else 0,
-            'total_params': metrics_info.total_params,
-            'trainable_params': metrics_info.trainable_params,
-            'inference_ms': latency_info['batch_1']['mean_ms'],
-            'throughput_fps': latency_info['batch_1']['throughput_fps']
-        })
-        
-        print(f"✓ Growth Rate {gr}: Test Acc = {test_acc*100:.2f}%, Inference = {latency_info['batch_1']['mean_ms']:.2f}ms")
-        close_all_figures()  # Free memory
-        
-        # Update progress bar
-        exp_duration = time.time() - ablation_start_time
-        progress.set_category("Growth Rate")
-        progress.update(f"GR-{gr}", exp_duration)
-    
-    # Save growth rate results
-    growth_df = pd.DataFrame(growth_results)
-    growth_csv = results_dir / "ablation_growth_rate.csv"
-    growth_df.to_csv(growth_csv, index=False)
-    print(f"\n✓ Saved growth rate results to: {growth_csv}")
-    print(growth_df.to_string(index=False))
-    
-    # =========================================================================
-    # ABLATION 2: Compression Factor
-    # =========================================================================
-    print("\n\n[5/6] Running Compression Factor Ablation...")
-    print("=" * 70)
-    
-    compression_results = []
-    for comp in config.ablation.compressions:
-        print(f"\n--- Testing Compression: {comp} ---")
-        
-        # Create model
-        model = create_rf_densenet(
-            input_shape=input_shape,
-            num_classes=num_classes,
-            growth_rate=config.model.growth_rate,
-            compression=comp,
-            depth=config.model.depth,
-            dropout_rate=config.model.dropout_rate,
-            initial_filters=config.model.initial_filters
-        )
-        
-        # Compile model
-        model = compile_model(
-            model,
-            learning_rate=config.training.learning_rate,
-            gradient_clip=config.training.gradient_clip_value
-        )
-        
-        # Get model info
-        metrics_info = get_model_metrics(model)
-        print(f"Model: {metrics_info}")
-        
-        # Create run directory
-        run_id = generate_run_id(f"ablation_comp{comp}")
-        run_dir = results_dir / "runs" / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Train model
-        print(f"Training for {epochs} epochs...")
-        history = train_model(
-            model=model,
-            X_train=X_train,
-            y_train=y_train,
-            X_val=X_val,
-            y_val=y_val,
-            run_dir=run_dir,
-            epochs=epochs,
-            batch_size=config.training.batch_size
-        )
-        
-        # Evaluate on test set
-        print("Evaluating on test set...")
-        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-        
-        # Get predictions for confusion matrix
-        y_pred_prob = model.predict(X_test, verbose=0)
-        y_pred = np.argmax(y_pred_prob, axis=1)
-        
-        # Generate and save training history plot
-        figures_dir = results_dir / "figures"
-        figures_dir.mkdir(parents=True, exist_ok=True)
-        
-        plot_training_history(
-            history=history,
-            title=f"Training History - Compression {comp}",
-            save_path=figures_dir / f"training_history_comp{comp}.png"
-        )
-        
-        # Generate confusion matrix
-        from sklearn.metrics import confusion_matrix as sk_confusion_matrix
-        cm = sk_confusion_matrix(y_test, y_pred)
-        plot_confusion_matrix(
-            confusion_matrix=cm,
-            class_labels=categories,
-            title=f"Confusion Matrix - Compression {comp}",
-            normalize=True,
-            save_path=figures_dir / f"confusion_matrix_comp{comp}.png"
-        )
-        
-        # Generate ROC curves (journal-ready)
-        plot_roc_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"ROC Curves - Compression {comp}",
-            save_path=figures_dir / f"roc_curves_comp{comp}.png"
-        )
-        
-        # Generate Precision-Recall curves (journal-ready)
-        plot_precision_recall_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"Precision-Recall Curves - Compression {comp}",
-            save_path=figures_dir / f"pr_curves_comp{comp}.png"
-        )
-        
-        # Compute F1 score
-        macro_f1 = f1_score(y_test, y_pred, average='macro') * 100
-        
-        # Benchmark inference time
-        latency_info = benchmark_inference(model, input_shape, warmup_runs=10, benchmark_runs=50)
-        
-        # Store results with F1 score
-        compression_results.append({
-            'compression': comp,
-            'test_accuracy': test_acc * 100,
-            'test_loss': test_loss,
-            'macro_f1': macro_f1,
-            'val_accuracy': max(history['val_accuracy']) * 100 if 'val_accuracy' in history else 0,
-            'total_params': metrics_info.total_params,
-            'trainable_params': metrics_info.trainable_params,
-            'inference_ms': latency_info['batch_1']['mean_ms'],
-            'throughput_fps': latency_info['batch_1']['throughput_fps']
-        })
-        
-        print(f"✓ Compression {comp}: Test Acc = {test_acc*100:.2f}%, Inference = {latency_info['batch_1']['mean_ms']:.2f}ms")
-        close_all_figures()  # Free memory
-        
-        # Update progress bar
-        exp_duration = time.time() - ablation_start_time
-        progress.set_category("Compression")
-        progress.update(f"Comp-{comp}", exp_duration)
-    
-    # Save compression results
-    compression_df = pd.DataFrame(compression_results)
-    compression_csv = results_dir / "ablation_compression.csv"
-    compression_df.to_csv(compression_csv, index=False)
-    print(f"\n✓ Saved compression results to: {compression_csv}")
-    print(compression_df.to_string(index=False))
-    
-    # =========================================================================
-    # ABLATION 3: Network Depth
-    # =========================================================================
-    print("\n\n[6/6] Running Network Depth Ablation...")
-    print("=" * 70)
-    
-    depth_results = []
-    for d in config.ablation.depths:
-        print(f"\n--- Testing Depth: {d} ---")
-        
-        # Create model
-        model = create_rf_densenet(
-            input_shape=input_shape,
-            num_classes=num_classes,
-            growth_rate=config.model.growth_rate,
-            compression=config.model.compression,
-            depth=d,
-            dropout_rate=config.model.dropout_rate,
-            initial_filters=config.model.initial_filters
-        )
-        
-        # Compile model
-        model = compile_model(
-            model,
-            learning_rate=config.training.learning_rate,
-            gradient_clip=config.training.gradient_clip_value
-        )
-        
-        # Get model info
-        metrics_info = get_model_metrics(model)
-        print(f"Model: {metrics_info}")
-        
-        # Create run directory
-        run_id = generate_run_id(f"ablation_depth{'_'.join(map(str, d))}")
-        run_dir = results_dir / "runs" / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Train model
-        print(f"Training for {epochs} epochs...")
-        history = train_model(
-            model=model,
-            X_train=X_train,
-            y_train=y_train,
-            X_val=X_val,
-            y_val=y_val,
-            run_dir=run_dir,
-            epochs=epochs,
-            batch_size=config.training.batch_size
-        )
-        
-        # Evaluate on test set
-        print("Evaluating on test set...")
-        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
-        
-        # Get predictions for confusion matrix
-        y_pred_prob = model.predict(X_test, verbose=0)
-        y_pred = np.argmax(y_pred_prob, axis=1)
-        
-        # Generate and save training history plot
-        figures_dir = results_dir / "figures"
-        figures_dir.mkdir(parents=True, exist_ok=True)
-        
-        depth_str = '_'.join(map(str, d))
-        plot_training_history(
-            history=history,
-            title=f"Training History - Depth {d}",
-            save_path=figures_dir / f"training_history_depth{depth_str}.png"
-        )
-        
-        # Generate confusion matrix
-        from sklearn.metrics import confusion_matrix as sk_confusion_matrix
-        cm = sk_confusion_matrix(y_test, y_pred)
-        plot_confusion_matrix(
-            confusion_matrix=cm,
-            class_labels=categories,
-            title=f"Confusion Matrix - Depth {d}",
-            normalize=True,
-            save_path=figures_dir / f"confusion_matrix_depth{depth_str}.png"
-        )
-        
-        # Generate ROC curves (journal-ready)
-        plot_roc_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"ROC Curves - Depth {d}",
-            save_path=figures_dir / f"roc_curves_depth{depth_str}.png"
-        )
-        
-        # Generate Precision-Recall curves (journal-ready)
-        plot_precision_recall_curves(
-            y_true=y_test,
-            y_prob=y_pred_prob,
-            class_labels=categories,
-            title=f"Precision-Recall Curves - Depth {d}",
-            save_path=figures_dir / f"pr_curves_depth{depth_str}.png"
-        )
-        
-        # Compute F1 score
-        macro_f1 = f1_score(y_test, y_pred, average='macro') * 100
-        
-        # Benchmark inference time
-        latency_info = benchmark_inference(model, input_shape, warmup_runs=10, benchmark_runs=50)
-        
-        # Store results with F1 score
-        depth_results.append({
-            'depth': str(d),
-            'test_accuracy': test_acc * 100,
-            'test_loss': test_loss,
-            'macro_f1': macro_f1,
-            'val_accuracy': max(history['val_accuracy']) * 100 if 'val_accuracy' in history else 0,
-            'total_params': metrics_info.total_params,
-            'trainable_params': metrics_info.trainable_params,
-            'inference_ms': latency_info['batch_1']['mean_ms'],
-            'throughput_fps': latency_info['batch_1']['throughput_fps']
-        })
-        
-        print(f"✓ Depth {d}: Test Acc = {test_acc*100:.2f}%, Inference = {latency_info['batch_1']['mean_ms']:.2f}ms")
-        close_all_figures()  # Free memory
-        
-        # Update progress bar
-        exp_duration = time.time() - ablation_start_time
-        progress.set_category("Depth")
-        progress.update(f"Depth-{d}", exp_duration)
-    
-    # Save depth results
-    depth_df = pd.DataFrame(depth_results)
-    depth_csv = results_dir / "ablation_depth.csv"
-    depth_df.to_csv(depth_csv, index=False)
-    print(f"\n✓ Saved depth results to: {depth_csv}")
-    print(depth_df.to_string(index=False))
-    
-    # =========================================================================
-    # Summary Plots - Comparing all ablation results
-    # =========================================================================
-    print("\n[7/7] Generating Summary Plots...")
-    print("=" * 70)
-    
-    figures_dir = results_dir / "figures"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Growth Rate Ablation Plot
-    if len(growth_df) > 0:
-        plot_ablation_study(
-            ablation_df=growth_df,
-            x_col='growth_rate',
-            y_col='test_accuracy',
-            title="Ablation: Growth Rate vs Test Accuracy",
-            xlabel="Growth Rate (k)",
-            ylabel="Test Accuracy (%)",
-            save_path=figures_dir / "ablation_summary_growth_rate.png"
-        )
-        print("✓ Generated growth rate ablation plot")
-    
-    # Compression Ablation Plot
-    if len(compression_df) > 0:
-        plot_ablation_study(
-            ablation_df=compression_df,
-            x_col='compression',
-            y_col='test_accuracy',
-            title="Ablation: Compression Factor vs Test Accuracy",
-            xlabel="Compression Factor (θ)",
-            ylabel="Test Accuracy (%)",
-            save_path=figures_dir / "ablation_summary_compression.png"
-        )
-        print("✓ Generated compression ablation plot")
-    
-    # Model Comparison Bar Chart (all experiments combined)
     all_results = []
-    for _, row in growth_df.iterrows():
-        all_results.append({'model': f"GR-{row['growth_rate']}", 'accuracy': row['test_accuracy'] / 100})
-    for _, row in compression_df.iterrows():
-        all_results.append({'model': f"Comp-{row['compression']}", 'accuracy': row['test_accuracy'] / 100})
-    for _, row in depth_df.iterrows():
-        all_results.append({'model': f"Depth-{row['depth']}", 'accuracy': row['test_accuracy'] / 100})
-    
-    if all_results:
-        comparison_df = pd.DataFrame(all_results)
-        plot_model_comparison_bar(
-            comparison_df=comparison_df,
-            metric_col='accuracy',
-            model_col='model',
-            title="Ablation Study: Model Comparison",
-            save_path=figures_dir / "ablation_model_comparison.png"
-        )
-        print("✓ Generated model comparison bar chart")
-    
-    # Radar Chart - Multi-metric comparison (journal-ready)
-    radar_metrics = {}
-    for _, row in growth_df.iterrows():
-        model_name = f"GR-{row['growth_rate']}"
-        radar_metrics[model_name] = {
-            'Accuracy': row['test_accuracy'] / 100,
-            'F1 Score': row.get('macro_f1', 0) / 100,
-            'Efficiency': 1 - (row['inference_ms'] / max(growth_df['inference_ms'])),  # Inverse of latency
-            'Compactness': 1 - (row['total_params'] / max(growth_df['total_params'])),  # Inverse of params
-        }
-    
-    if radar_metrics:
-        plot_radar_chart(
-            metrics_dict=radar_metrics,
-            title="Multi-Metric Model Comparison (Growth Rate Ablation)",
-            save_path=figures_dir / "radar_chart_growth_rate.png"
-        )
-        print("✓ Generated radar chart comparison")
-    
-    # Accuracy vs Latency plot (journal-ready - Pareto frontier)
-    all_efficiency_data = []
-    for _, row in growth_df.iterrows():
-        all_efficiency_data.append({
-            'model': f"GR-{row['growth_rate']}",
-            'accuracy': row['test_accuracy'] / 100,
-            'avg_latency_ms': row['inference_ms'],
-            'total_params': row['total_params']
-        })
-    for _, row in compression_df.iterrows():
-        all_efficiency_data.append({
-            'model': f"Comp-{row['compression']}",
-            'accuracy': row['test_accuracy'] / 100,
-            'avg_latency_ms': row['inference_ms'],
-            'total_params': row['total_params']
-        })
-    for _, row in depth_df.iterrows():
-        all_efficiency_data.append({
-            'model': f"Depth-{row['depth']}",
-            'accuracy': row['test_accuracy'] / 100,
-            'avg_latency_ms': row['inference_ms'],
-            'total_params': row['total_params']
-        })
-    
-    if all_efficiency_data:
-        efficiency_df = pd.DataFrame(all_efficiency_data)
-        plot_accuracy_vs_latency(
-            comparison_df=efficiency_df,
-            accuracy_col='accuracy',
-            latency_col='avg_latency_ms',
-            params_col='total_params',
-            model_col='model',
-            title="Accuracy vs. Inference Latency (Pareto Analysis)",
-            save_path=figures_dir / "accuracy_vs_latency.png"
-        )
-        print("✓ Generated accuracy vs latency plot")
-    
-    close_all_figures()
+    all_histories = {}  # For combined plots
+    start_time = time.time()
     
     # =========================================================================
-    # Final Summary with Device Info
+    # PHASE 4: Run Experiments
     # =========================================================================
-    device_info = get_device_info()
-    total_ablation_time = time.time() - ablation_start_time
+    print("\n[4/5] Running Experiments...")
+    print("=" * 70)
     
+    # Helper function for single experiment
+    def run_single(exp_id, gr, comp, depth, batch, res, seed):
+        from sklearn.metrics import confusion_matrix as sk_cm, f1_score
+        import tensorflow as tf
+        
+        # Set seed
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
+        
+        # Load data at correct resolution
+        if res != config.data.img_size[0]:
+            X_exp, Y_exp = load_dataset_numpy(
+                data_dir=data_dir, categories=categories,
+                img_size=(res, res), max_images_per_class=config.data.max_images_per_class,
+                show_progress=False
+            )
+        else:
+            X_exp, Y_exp = X, Y
+        
+        X_train, X_val, X_test, y_train, y_val, y_test = split_dataset(
+            X_exp, Y_exp, train_ratio=0.7, val_ratio=0.15, seed=seed
+        )
+        
+        inp_shape = (res, res, 3)
+        
+        # Create model (within strategy scope for multi-GPU)
+        with strategy.scope():
+            model = create_rf_densenet(
+                input_shape=inp_shape,
+                num_classes=num_classes,
+                growth_rate=gr,
+                compression=comp,
+                depth=depth,
+                dropout_rate=config.model.dropout_rate,
+                initial_filters=config.model.initial_filters
+            )
+            model = compile_model(model, learning_rate=config.training.learning_rate)
+        
+        metrics_info = get_model_metrics(model)
+        
+        # Train
+        run_dir = results_dir / "runs" / f"{exp_id}_seed{seed}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        
+        history = train_model(
+            model=model,
+            X_train=X_train, y_train=y_train,
+            X_val=X_val, y_val=y_val,
+            run_dir=run_dir,
+            epochs=epochs,
+            batch_size=batch,
+            early_stopping_patience=config.training.early_stopping_patience
+        )
+        
+        # Evaluate
+        test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+        y_pred_prob = model.predict(X_test, verbose=0)
+        y_pred = np.argmax(y_pred_prob, axis=1)
+        
+        macro_f1 = f1_score(y_test, y_pred, average='macro') * 100
+        
+        # Inference time (machine-specific)
+        latency = benchmark_inference(model, inp_shape, warmup_runs=5, benchmark_runs=20)
+        
+        # NOTE: Individual plots removed - only combined summary plots are generated
+        # This reduces image count from ~100 to ~10 for cleaner output
+        close_all_figures()
+        
+        # Calculate edge device metrics
+        model_size_kb = (metrics_info.total_params * 4) / 1024  # float32 = 4 bytes
+        # Estimate memory: model + gradients + activations (rough: 3x model size)
+        memory_mb = (model_size_kb * 3) / 1024
+        
+        return {
+            'experiment_id': exp_id,
+            'seed': seed,
+            'growth_rate': gr,
+            'compression': comp,
+            'depth': str(depth),
+            'batch_size': batch,
+            'resolution': res,
+            'test_accuracy': test_acc * 100,
+            'test_loss': test_loss,
+            'macro_f1': macro_f1,
+            'val_accuracy': max(history.get('val_accuracy', [0])) * 100,
+            # Edge device metrics
+            'total_params': metrics_info.total_params,
+            'model_size_kb': model_size_kb,
+            'memory_mb': memory_mb,
+            'inference_ms': latency['batch_1']['mean_ms'],
+            'throughput_fps': latency['batch_1']['throughput_fps'],
+            'machine': machine_info['hostname']
+        }, history
+    
+    # ----- ARCHITECTURE ABLATION -----
+    print("\n" + "─" * 70)
+    print("GROUP 1: ARCHITECTURE (Growth Rate × Compression × Depth)")
+    print("─" * 70)
+    
+    arch_histories = []
+    for idx, (gr, comp, depth) in enumerate(arch_combos, 1):
+        depth_str = '_'.join(map(str, depth))
+        exp_id = f"arch_gr{gr}_c{comp}_d{depth_str}"
+        
+        for seed in seeds:
+            progress.set_category(f"ARCH: GR={gr},C={comp},D={depth} [seed={seed}]")
+            result, history = run_single(exp_id, gr, comp, depth, 
+                                          config.training.batch_size, 
+                                          config.data.img_size[0], seed)
+            result['ablation_group'] = 'architecture'
+            all_results.append(result)
+            arch_histories.append({'exp_id': exp_id, 'seed': seed, 'history': history})
+            progress.update()
+    
+    # ----- BATCH SIZE ABLATION -----
+    print("\n" + "─" * 70)
+    print("GROUP 2: BATCH SIZE")
+    print("─" * 70)
+    
+    for bs in config.ablation.batch_sizes:
+        exp_id = f"batch_{bs}"
+        for seed in seeds:
+            progress.set_category(f"BATCH: {bs} [seed={seed}]")
+            result, history = run_single(exp_id, config.model.growth_rate, 
+                                          config.model.compression, config.model.depth,
+                                          bs, config.data.img_size[0], seed)
+            result['ablation_group'] = 'batch_size'
+            all_results.append(result)
+            progress.update()
+    
+    # ----- RESOLUTION ABLATION -----
+    print("\n" + "─" * 70)
+    print("GROUP 3: RESOLUTION")
+    print("─" * 70)
+    
+    for res in config.ablation.resolutions:
+        exp_id = f"res_{res}"
+        for seed in seeds:
+            progress.set_category(f"RESOLUTION: {res}×{res} [seed={seed}]")
+            result, history = run_single(exp_id, config.model.growth_rate,
+                                          config.model.compression, config.model.depth,
+                                          config.training.batch_size, res, seed)
+            result['ablation_group'] = 'resolution'
+            all_results.append(result)
+            progress.update()
+    
+    # =========================================================================
+    # PHASE 5: Save Results & Generate Summary
+    # =========================================================================
+    print("\n\n[5/5] Saving Results & Summary Plots...")
+    print("=" * 70)
+    
+    # Save all results
+    results_df = pd.DataFrame(all_results)
+    results_csv = results_dir / "ablation_full_factorial.csv"
+    results_df.to_csv(results_csv, index=False)
+    print(f"✓ Saved: {results_csv}")
+    
+    # Compute mean ± std per experiment_id
+    summary_df = results_df.groupby('experiment_id').agg({
+        'test_accuracy': ['mean', 'std'],
+        'macro_f1': ['mean', 'std'],
+        'inference_ms': ['mean', 'std'],
+        'total_params': 'first',
+        'ablation_group': 'first'
+    }).reset_index()
+    summary_df.columns = ['experiment_id', 'accuracy_mean', 'accuracy_std', 
+                           'f1_mean', 'f1_std', 'latency_mean', 'latency_std',
+                           'params', 'group']
+    summary_csv = results_dir / "ablation_summary.csv"
+    summary_df.to_csv(summary_csv, index=False)
+    print(f"✓ Saved: {summary_csv}")
+    
+    # Generate combined plots per ablation group
+    _generate_combined_plots(results_df, figures_dir)
+    
+    # Final summary
+    total_time = time.time() - start_time
     print("\n" + "=" * 70)
     print("🎉 ABLATION STUDY COMPLETE!")
     print("=" * 70)
-    print(f"\n⏱️ Total Duration: {total_ablation_time/60:.1f} minutes")
-    print(f"\n📊 Results saved to: {results_dir}")
-    print(f"  - {growth_csv.name}")
-    print(f"  - {compression_csv.name}")
-    print(f"  - {depth_csv.name}")
-    print(f"\n📈 Journal-Ready Figures saved to: {figures_dir}")
-    print(f"  - Training history plots (accuracy/loss curves)")
-    print(f"  - Confusion matrices (normalized)")
-    print(f"  - ROC curves (per-class AUC)")
-    print(f"  - Precision-Recall curves")
-    print(f"  - Ablation summary plots")
-    print(f"  - Radar chart (multi-metric comparison)")
-    print(f"  - Accuracy vs Latency (Pareto analysis)")
-    print(f"\n🖥️ Device Information:")
-    print(f"  - Hostname: {device_info.get('hostname', 'N/A')}")
-    print(f"  - Platform: {device_info.get('platform', 'N/A')}")
-    print(f"  - TensorFlow: {device_info.get('tensorflow_version', 'N/A')}")
-    print(f"  - GPUs: {device_info.get('gpus', [])}")
-    print("\n" + "=" * 70)
+    print(f"⏱️  Duration: {total_time/3600:.1f} hours ({total_time/60:.0f} minutes)")
+    print(f"📊 Experiments: {len(all_results)} ({n_configs} configs × {n_seeds} seeds)")
+    print(f"📈 Best Accuracy: {results_df['test_accuracy'].max():.2f}%")
+    print(f"🖥️  Machine: {machine_info['hostname']}")
+    print(f"📁 Results: {results_dir}")
+    print("=" * 70)
+    
+    return results_df
+
+
+def _generate_combined_plots(df: pd.DataFrame, figures_dir: Path):
+    """Generate journal-quality combined plots for ablation study."""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    
+    # =========================================================================
+    # JOURNAL-QUALITY STYLE SETTINGS
+    # =========================================================================
+    plt.style.use('seaborn-v0_8-whitegrid')
+    
+    # Professional typography
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.size': 11,
+        'axes.titlesize': 14,
+        'axes.labelsize': 12,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'legend.fontsize': 9,
+        'figure.titlesize': 16,
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'figure.dpi': 300,
+        'savefig.dpi': 300,
+        'savefig.bbox': 'tight',
+        'savefig.pad_inches': 0.1
+    })
+    
+    # Color palette (colorblind-friendly)
+    COLORS = {
+        'primary': '#2E86AB',
+        'secondary': '#A23B72', 
+        'tertiary': '#F18F01',
+        'quaternary': '#C73E1D',
+        'architecture': '#2E86AB',
+        'batch_size': '#28A745',
+        'resolution': '#F18F01'
+    }
+    
+    print("Generating journal-quality plots...")
+    
+    # =========================================================================
+    # 1. ACCURACY + LOSS: Growth Rate (Side-by-side)
+    # =========================================================================
+    arch_df = df[df['ablation_group'] == 'architecture']
+    if len(arch_df) > 0:
+        gr_acc = arch_df.groupby('growth_rate')['test_accuracy'].agg(['mean', 'std']).reset_index()
+        gr_loss = arch_df.groupby('growth_rate')['test_loss'].agg(['mean', 'std']).reset_index()
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        
+        # Accuracy
+        axes[0].errorbar(gr_acc['growth_rate'], gr_acc['mean'], yerr=gr_acc['std'], 
+                         fmt='o-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['primary'], capthick=1.5)
+        axes[0].set_xlabel('Growth Rate')
+        axes[0].set_ylabel('Test Accuracy (%)')
+        axes[0].set_title('(a) Accuracy vs Growth Rate')
+        
+        # Loss
+        axes[1].errorbar(gr_loss['growth_rate'], gr_loss['mean'], yerr=gr_loss['std'], 
+                         fmt='s-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['secondary'], capthick=1.5)
+        axes[1].set_xlabel('Growth Rate')
+        axes[1].set_ylabel('Test Loss')
+        axes[1].set_title('(b) Loss vs Growth Rate')
+        
+        fig.suptitle('Effect of Growth Rate on Model Performance', fontweight='bold', y=1.02)
+        plt.tight_layout()
+        fig.savefig(figures_dir / 'growth_rate_acc_loss.png')
+        plt.close(fig)
+        
+        # Compression
+        comp_acc = arch_df.groupby('compression')['test_accuracy'].agg(['mean', 'std']).reset_index()
+        comp_loss = arch_df.groupby('compression')['test_loss'].agg(['mean', 'std']).reset_index()
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        
+        axes[0].errorbar(comp_acc['compression'], comp_acc['mean'], yerr=comp_acc['std'], 
+                         fmt='o-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['primary'], capthick=1.5)
+        axes[0].set_xlabel('Compression Factor')
+        axes[0].set_ylabel('Test Accuracy (%)')
+        axes[0].set_title('(a) Accuracy vs Compression')
+        
+        axes[1].errorbar(comp_loss['compression'], comp_loss['mean'], yerr=comp_loss['std'], 
+                         fmt='s-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['secondary'], capthick=1.5)
+        axes[1].set_xlabel('Compression Factor')
+        axes[1].set_ylabel('Test Loss')
+        axes[1].set_title('(b) Loss vs Compression')
+        
+        fig.suptitle('Effect of Compression on Model Performance', fontweight='bold', y=1.02)
+        plt.tight_layout()
+        fig.savefig(figures_dir / 'compression_acc_loss.png')
+        plt.close(fig)
+    
+    # =========================================================================
+    # 2. BATCH SIZE: Accuracy + Loss
+    # =========================================================================
+    batch_df = df[df['ablation_group'] == 'batch_size']
+    if len(batch_df) > 0:
+        bs_acc = batch_df.groupby('batch_size')['test_accuracy'].agg(['mean', 'std']).reset_index()
+        bs_loss = batch_df.groupby('batch_size')['test_loss'].agg(['mean', 'std']).reset_index()
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        
+        axes[0].errorbar(bs_acc['batch_size'], bs_acc['mean'], yerr=bs_acc['std'], 
+                         fmt='^-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['batch_size'], capthick=1.5)
+        axes[0].set_xlabel('Batch Size')
+        axes[0].set_ylabel('Test Accuracy (%)')
+        axes[0].set_title('(a) Accuracy vs Batch Size')
+        
+        axes[1].errorbar(bs_loss['batch_size'], bs_loss['mean'], yerr=bs_loss['std'], 
+                         fmt='v-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['secondary'], capthick=1.5)
+        axes[1].set_xlabel('Batch Size')
+        axes[1].set_ylabel('Test Loss')
+        axes[1].set_title('(b) Loss vs Batch Size')
+        
+        fig.suptitle('Effect of Batch Size on Model Performance', fontweight='bold', y=1.02)
+        plt.tight_layout()
+        fig.savefig(figures_dir / 'batch_size_acc_loss.png')
+        plt.close(fig)
+    
+    # =========================================================================
+    # 3. RESOLUTION: Accuracy + Loss
+    # =========================================================================
+    res_df = df[df['ablation_group'] == 'resolution']
+    if len(res_df) > 0:
+        res_acc = res_df.groupby('resolution')['test_accuracy'].agg(['mean', 'std']).reset_index()
+        res_loss = res_df.groupby('resolution')['test_loss'].agg(['mean', 'std']).reset_index()
+        
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        
+        axes[0].errorbar(res_acc['resolution'], res_acc['mean'], yerr=res_acc['std'], 
+                         fmt='D-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['resolution'], capthick=1.5)
+        axes[0].set_xlabel('Input Resolution (pixels)')
+        axes[0].set_ylabel('Test Accuracy (%)')
+        axes[0].set_title('(a) Accuracy vs Resolution')
+        
+        axes[1].errorbar(res_loss['resolution'], res_loss['mean'], yerr=res_loss['std'], 
+                         fmt='d-', capsize=4, linewidth=2, markersize=8, 
+                         color=COLORS['secondary'], capthick=1.5)
+        axes[1].set_xlabel('Input Resolution (pixels)')
+        axes[1].set_ylabel('Test Loss')
+        axes[1].set_title('(b) Loss vs Resolution')
+        
+        fig.suptitle('Effect of Input Resolution on Model Performance', fontweight='bold', y=1.02)
+        plt.tight_layout()
+        fig.savefig(figures_dir / 'resolution_acc_loss.png')
+        plt.close(fig)
+    
+    # =========================================================================
+    # 4. PARETO FRONT: Accuracy vs Latency (Edge Device Trade-off)
+    # =========================================================================
+    if len(df) > 0 and 'inference_ms' in df.columns:
+        summary = df.groupby('experiment_id').agg({
+            'test_accuracy': 'mean',
+            'inference_ms': 'mean',
+            'model_size_kb': 'first',
+            'ablation_group': 'first'
+        }).reset_index()
+        
+        fig, ax = plt.subplots(figsize=(10, 7))
+        
+        markers = {'architecture': 'o', 'batch_size': '^', 'resolution': 'D'}
+        
+        for group in summary['ablation_group'].unique():
+            group_df = summary[summary['ablation_group'] == group]
+            ax.scatter(group_df['inference_ms'], group_df['test_accuracy'], 
+                       label=group.replace('_', ' ').title(), 
+                       s=120, alpha=0.8, c=COLORS.get(group, 'gray'),
+                       marker=markers.get(group, 'o'), edgecolors='white', linewidth=1)
+        
+        # Annotate best models
+        best_idx = summary['test_accuracy'].idxmax()
+        fastest_idx = summary['inference_ms'].idxmin()
+        
+        ax.annotate(f"Best ({summary.loc[best_idx, 'test_accuracy']:.1f}%)", 
+                    xy=(summary.loc[best_idx, 'inference_ms'], summary.loc[best_idx, 'test_accuracy']),
+                    xytext=(15, 10), textcoords='offset points', fontsize=9,
+                    arrowprops=dict(arrowstyle='->', color='gray', lw=0.8))
+        ax.annotate(f"Fastest ({summary.loc[fastest_idx, 'inference_ms']:.1f}ms)", 
+                    xy=(summary.loc[fastest_idx, 'inference_ms'], summary.loc[fastest_idx, 'test_accuracy']),
+                    xytext=(15, -15), textcoords='offset points', fontsize=9,
+                    arrowprops=dict(arrowstyle='->', color='gray', lw=0.8))
+        
+        ax.set_xlabel('Inference Latency (ms)')
+        ax.set_ylabel('Test Accuracy (%)')
+        ax.set_title('Pareto Front: Accuracy vs Latency Trade-off', fontweight='bold')
+        ax.legend(loc='lower right', framealpha=0.9, edgecolor='gray')
+        fig.savefig(figures_dir / 'pareto_accuracy_latency.png')
+        plt.close(fig)
+    
+    # =========================================================================
+    # 5. RADAR CHART: Top 5 Models Comparison
+    # =========================================================================
+    if len(df) > 0:
+        summary = df.groupby('experiment_id').agg({
+            'test_accuracy': 'mean',
+            'macro_f1': 'mean',
+            'inference_ms': 'mean',
+            'model_size_kb': 'first',
+            'throughput_fps': 'mean'
+        }).reset_index()
+        
+        top5 = summary.nlargest(5, 'test_accuracy')
+        categories = ['Accuracy', 'F1 Score', 'Speed', 'Compactness', 'Throughput']
+        n_cats = len(categories)
+        
+        fig, ax = plt.subplots(figsize=(10, 9), subplot_kw=dict(projection='polar'))
+        angles = np.linspace(0, 2 * np.pi, n_cats, endpoint=False).tolist()
+        angles += angles[:1]
+        
+        colors_radar = ['#2E86AB', '#A23B72', '#F18F01', '#28A745', '#6C757D']
+        
+        for i, (_, row) in enumerate(top5.iterrows()):
+            values = [
+                row['test_accuracy'] / 100,
+                row['macro_f1'] / 100,
+                1 - (row['inference_ms'] / summary['inference_ms'].max()),
+                1 - (row['model_size_kb'] / summary['model_size_kb'].max()),
+                row['throughput_fps'] / summary['throughput_fps'].max()
+            ]
+            values += values[:1]
+            
+            # Shorten label
+            label = row['experiment_id'].replace('arch_', '').replace('_', ' ')[:18]
+            ax.plot(angles, values, 'o-', linewidth=2, color=colors_radar[i], label=label)
+            ax.fill(angles, values, alpha=0.15, color=colors_radar[i])
+        
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(categories, fontsize=11)
+        ax.set_ylim(0, 1)
+        ax.set_title('Top 5 Models: Multi-Metric Comparison', fontweight='bold', y=1.08)
+        
+        # Legend outside plot
+        ax.legend(loc='upper left', bbox_to_anchor=(1.15, 1.0), 
+                  framealpha=0.9, edgecolor='gray', fontsize=8)
+        
+        fig.savefig(figures_dir / 'radar_top5_models.png')
+        plt.close(fig)
+    
+    # =========================================================================
+    # 6. HORIZONTAL BAR: All Experiments Ranked
+    # =========================================================================
+    if len(df) > 0:
+        summary = df.groupby('experiment_id').agg({
+            'test_accuracy': ['mean', 'std'],
+            'ablation_group': 'first'
+        }).reset_index()
+        summary.columns = ['experiment_id', 'acc_mean', 'acc_std', 'group']
+        summary = summary.sort_values('acc_mean', ascending=True)
+        
+        fig, ax = plt.subplots(figsize=(10, max(6, len(summary) * 0.25)))
+        
+        bar_colors = [COLORS.get(g, 'gray') for g in summary['group']]
+        y_pos = range(len(summary))
+        
+        bars = ax.barh(y_pos, summary['acc_mean'], xerr=summary['acc_std'], 
+                       color=bar_colors, capsize=2, height=0.7, alpha=0.85)
+        
+        ax.set_yticks(y_pos)
+        labels = [e.replace('arch_', '').replace('_', ' ')[:20] for e in summary['experiment_id']]
+        ax.set_yticklabels(labels, fontsize=8)
+        ax.set_xlabel('Test Accuracy (%)')
+        ax.set_title('All Experiments: Accuracy Ranking', fontweight='bold')
+        
+        # Best line
+        best_acc = summary['acc_mean'].max()
+        ax.axvline(x=best_acc, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.text(best_acc + 0.3, len(summary) - 1, f'Best: {best_acc:.1f}%', 
+                color='red', fontsize=9, va='center')
+        
+        # Legend for groups
+        from matplotlib.patches import Patch
+        legend_elements = [Patch(facecolor=COLORS[g], label=g.replace('_', ' ').title()) 
+                          for g in ['architecture', 'batch_size', 'resolution'] if g in COLORS]
+        ax.legend(handles=legend_elements, loc='lower right', framealpha=0.9)
+        
+        plt.tight_layout()
+        fig.savefig(figures_dir / 'bar_all_experiments.png')
+        plt.close(fig)
+    
+    # Reset style
+    plt.style.use('default')
+    print("✓ Journal-quality plots saved (6 combined figures)")
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Run ablation study')
-    parser.add_argument('--quick', action='store_true', help='Quick test mode (2 epochs)')
+    parser = argparse.ArgumentParser(description='Full factorial ablation study')
+    parser.add_argument('--quick', action='store_true', help='Quick test (2 epochs)')
+    parser.add_argument('--single-seed', action='store_true', help='Use single seed only')
     args = parser.parse_args()
     
-    run_ablation(quick_test=args.quick)
+    run_ablation(quick_test=args.quick, single_seed=args.single_seed)

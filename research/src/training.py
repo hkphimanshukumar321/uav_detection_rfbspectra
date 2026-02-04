@@ -224,14 +224,17 @@ def create_callbacks(
         EarlyStopping(
             monitor='val_loss',
             patience=patience_early,
+            min_delta=0.001,  # Minimum change to qualify as improvement
             restore_best_weights=True,
-            verbose=1
+            verbose=1,
+            mode='min'  # Explicitly set mode for val_loss
         ),
         ReduceLROnPlateau(
             monitor='val_loss',
             factor=lr_factor,
             patience=patience_lr,
             min_lr=min_lr,
+            min_delta=0.001,
             verbose=1
         ),
         ModelCheckpoint(
@@ -298,7 +301,9 @@ def train_model(
     epochs: int = 50,
     batch_size: int = 32,
     class_weights: Optional[Dict[int, float]] = None,
-    callbacks: Optional[List[Callback]] = None
+    callbacks: Optional[List[Callback]] = None,
+    early_stopping_patience: int = 10,
+    reduce_lr_patience: int = 5
 ) -> Dict[str, List[float]]:
     """
     Train model with GPU optimization and comprehensive monitoring.
@@ -318,7 +323,9 @@ def train_model(
         epochs: Maximum training epochs
         batch_size: Samples per gradient update
         class_weights: Class weights for imbalanced data
-        callbacks: Training callbacks
+        callbacks: Training callbacks (if None, creates default)
+        early_stopping_patience: Epochs without improvement before stopping
+        reduce_lr_patience: Epochs without improvement before reducing LR
         
     Returns:
         Training history dictionary
@@ -326,7 +333,12 @@ def train_model(
     run_dir = Path(run_dir)
     
     if callbacks is None:
-        callbacks = create_callbacks(run_dir, epochs=epochs)
+        callbacks = create_callbacks(
+            run_dir, 
+            patience_early=early_stopping_patience,
+            patience_lr=reduce_lr_patience,
+            epochs=epochs
+        )
     
     # Create tf.data datasets for GPU optimization
     train_ds = tf.data.Dataset.from_tensor_slices((X_train, y_train))

@@ -1,40 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-Research Configuration for DroneRFB-Spectra Paper
-==================================================
+Research Configuration for DroneRFB-Spectra
+============================================
 
-Updated configuration with optimized ablation parameters based on:
-- Dataset size: ~14,500 samples (297-768 per class)
-- Focus: Lightweight edge deployment
-- Target: Journal/conference publication
-
-Changes from initial config:
-- batch_sizes: [8, 16, 32, 64] (removed 128, added 8 for edge relevance)
-- growth_rates: [4, 8, 12] (removed 16, focused on lightweight)
-- compressions: [0.25, 0.5, 0.75] (reduced from 5 to 3)
-- depths: [(2,2,2), (3,3,3), (4,4,4)] (reduced from 5 to 3)
-- epochs: 40 (reduced from 50 with early_stopping_patience=10)
+Simplified configuration for ablation study focused on edge devices.
 """
 
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
 
 
 @dataclass
 class DataConfig:
-    """Dataset configuration for research experiments."""
+    """Dataset configuration."""
     data_dir: Path = Path("/home/himanshuk/DRONE_RFB_SPECTRA/uav_detection_rfbspectra/nr1 1 (1)")
     img_size: Tuple[int, int] = (64, 64)
     test_split: float = 0.15
     val_split: float = 0.15
     max_images_per_class: int = None
-    augmentation: bool = True
-    
+
 
 @dataclass
 class ModelConfig:
-    """RF-DenseNet architecture configuration."""
+    """Default RF-DenseNet architecture."""
     growth_rate: int = 8
     compression: float = 0.5
     depth: Tuple[int, int, int] = (3, 3, 3)
@@ -44,225 +33,122 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
-    """Training configuration optimized for research experiments."""
+    """Training hyperparameters."""
     epochs: int = 40
-      # Reduced for CPU training (increase if GPU available)
     batch_size: int = 5
     learning_rate: float = 1e-3
-    seed: int = 42
+    
+    # === EXPERIMENT ENABLE FLAGS ===
+    # Set to False for quick runs on 1 GPU, True for full runs on 4 GPUs
+    
+    # Multiple seeds for statistical significance (mean ± std)
+    use_multiple_seeds: bool = True  # False = 1 seed (fast), True = 3 seeds
+    seeds: List[int] = field(default_factory=lambda: [42, 123, 456])
+    
+    # Cross-validation (5-fold) - tests generalization across data splits
+    enable_cross_validation: bool = False  # Set True on 4-GPU machine
+    cv_folds: int = 5
+    
+    # SNR robustness testing - tests performance under noise
+    enable_snr_testing: bool = False  # Set True on 4-GPU machine
+    snr_levels_db: List[int] = field(default_factory=lambda: [0, 5, 10, 15, 20, 25, 30])
+    
+    # Training callbacks
     early_stopping_patience: int = 10
-    reduce_lr_patience: int = 5
-    reduce_lr_factor: float = 0.5
-    min_lr: float = 1e-6
     gradient_clip_value: float = 1.0
 
 
 @dataclass
 class AblationConfig:
     """
-    Optimized ablation study configuration.
+    Ablation parameters for full factorial study.
     
-    Estimated experiments: ~60 runs (down from ~200)
-    - Growth rates: 3 values
-    - Compressions: 3 values  
-    - Depths: 3 configurations
-    - Batch sizes: 4 values
-    - Learning rates: 4 values
-    
-    Time savings: ~50% while maintaining research rigor
+    Architecture: 3 × 3 × 3 = 27 configs
+    + Batch size: 3 configs
+    + Resolution: 3 configs
+    = 33 configs × 3 seeds = 99 experiments
     """
-    # Reduced for CPU training (add more if GPU available)
-    growth_rates: List[int] = field(default_factory=lambda: [4, 8 ,12])
-    
-    # Key compression factors (reduced for CPU)
-    compressions: List[float] = field(default_factory=lambda: [0.25,0.5,0.75])
-    
-    # Representative depth configurations (reduced for CPU)
+    # Architecture parameters
+    growth_rates: List[int] = field(default_factory=lambda: [4, 8, 12])
+    compressions: List[float] = field(default_factory=lambda: [0.25, 0.5, 0.75])
     depths: List[Tuple[int, int, int]] = field(default_factory=lambda: [
-        (2, 2, 2),  # Shallow
-        (3, 3, 3),  # Medium (default)
-        (4,4,4)
+        (2, 2, 2),  # Shallow - fast inference
+        (3, 3, 3),  # Medium - balanced
+        (4, 4, 4)   # Deep - high accuracy
     ])
     
-    # Edge-relevant batch sizes (includes small batches for edge simulation)
-    batch_sizes: List[int] = field(default_factory=lambda: [5,10,20])
+    # Training parameters
+    batch_sizes: List[int] = field(default_factory=lambda: [5, 10, 20])
     
-    # Resolution sweep for input size ablation
+    # Input resolution (edge-relevant)
     resolutions: List[int] = field(default_factory=lambda: [32, 64, 128])
-    
-    # Learning rate sweep
-    learning_rates: List[float] = field(default_factory=lambda: [1e-4, 5e-4, 1e-3, 5e-3])
-    
-    # Runs per configuration for statistical significance
-    num_runs: int = 3
-
-
-@dataclass
-class BaselineConfig:
-    """Baseline model comparison configuration."""
-    models: List[str] = field(default_factory=lambda: [
-        # Lightweight models (edge-relevant)
-        "MobileNetV2",
-        "MobileNetV3Small",
-        "MobileNetV3Large",
-        
-        # DenseNet family (our inspiration)
-        "DenseNet121",
-        "DenseNet169",
-        
-        # ResNet family
-        "ResNet50V2",
-        "ResNet101V2",
-        
-        # EfficientNet family
-        "EfficientNetV2B0",
-        "EfficientNetV2B1",
-        
-        # Classic baselines
-        "VGG16",
-        
-        # Modern architectures
-        "ConvNeXtTiny",
-        
-        # Simple baseline
-        "SimpleCNN",
-    ])
-    use_pretrained: bool = True
-    freeze_base: bool = True
-    fine_tune_epochs: int = 20
-
-
-@dataclass
-class ExperimentConfig:
-    """Additional experiments for publication."""
-    
-    # Cross-validation
-    use_cross_validation: bool = True
-    cv_folds: int = 5
-    
-    # SNR robustness testing
-    test_snr_robustness: bool = True
-    snr_levels_db: List[int] = field(default_factory=lambda: [0, 5, 10, 15, 20, 25, 30])
-    
-    # Binarization - Using Otsu only (no ablation needed)
-    test_binarization: bool = False  # Disabled - using Otsu by default
-    binarization_methods: List[str] = field(default_factory=lambda: ['otsu'])
-    
-    # Learning curve (data efficiency)
-    test_learning_curve: bool = True
-    training_fractions: List[float] = field(default_factory=lambda: [0.1, 0.25, 0.5, 0.75, 1.0])
-    
-    # Feature visualization
-    generate_feature_viz: bool = True
-    viz_methods: List[str] = field(default_factory=lambda: ['tsne', 'umap', 'pca'])
-    
-    # Calibration analysis
-    test_calibration: bool = True
-    
-    # Statistical significance
-    run_significance_tests: bool = True
-    significance_level: float = 0.05
 
 
 @dataclass
 class OutputConfig:
-    """Output organization for research results."""
+    """Output directories."""
     results_dir: Path = Path("results")
-    runs_dir: Path = Path("results/runs")
-    figures_dir: Path = Path("results/figures")
-    tables_dir: Path = Path("results/tables")
-    models_dir: Path = Path("results/best_models")
-    
-    save_model: bool = True
     figure_dpi: int = 300
-    figure_format: List[str] = field(default_factory=lambda: ["png", "pdf"])
 
 
 @dataclass
 class ResearchConfig:
-    """Master configuration for all research experiments."""
+    """Master configuration."""
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     ablation: AblationConfig = field(default_factory=AblationConfig)
-    baseline: BaselineConfig = field(default_factory=BaselineConfig)
-    experiments: ExperimentConfig = field(default_factory=ExperimentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+
+
+def print_experiment_summary(config: ResearchConfig = None):
+    """Print experiment summary."""
+    if config is None:
+        config = ResearchConfig()
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        def convert(obj):
-            if hasattr(obj, '__dict__'):
-                return {k: convert(v) for k, v in obj.__dict__.items()}
-            elif isinstance(obj, Path):
-                return str(obj)
-            elif isinstance(obj, tuple):
-                return list(obj)
-            else:
-                return obj
-        return convert(self)
-
-
-# Default configuration instance
-DEFAULT_RESEARCH_CONFIG = ResearchConfig()
-
-
-# Experiment summary
-def print_experiment_summary(config: ResearchConfig):
-    """Print summary of planned experiments."""
-    print("=" * 70)
-    print("RESEARCH EXPERIMENT SUMMARY")
-    print("=" * 70)
-    
-    # Ablation study
-    n_growth = len(config.ablation.growth_rates)
-    n_comp = len(config.ablation.compressions)
-    n_depth = len(config.ablation.depths)
+    n_arch = (len(config.ablation.growth_rates) * 
+              len(config.ablation.compressions) * 
+              len(config.ablation.depths))
     n_batch = len(config.ablation.batch_sizes)
-    n_lr = len(config.ablation.learning_rates)
+    n_res = len(config.ablation.resolutions)
+    n_seeds = len(config.training.seeds)
     
-    ablation_runs = n_growth + n_comp + n_depth + n_batch + n_lr
+    n_configs = n_arch + n_batch + n_res
+    total = n_configs * n_seeds
     
-    print(f"\n1. ABLATION STUDY: ~{ablation_runs} runs")
-    print(f"   - Growth rates: {config.ablation.growth_rates}")
-    print(f"   - Compressions: {config.ablation.compressions}")
-    print(f"   - Depths: {config.ablation.depths}")
-    print(f"   - Batch sizes: {config.ablation.batch_sizes}")
-    print(f"   - Learning rates: {config.ablation.learning_rates}")
+    # Detect available GPUs
+    try:
+        import tensorflow as tf
+        gpus = tf.config.list_physical_devices('GPU')
+        n_gpus = len(gpus) if gpus else 1
+    except:
+        n_gpus = 1  # Fallback if TF not available
     
-    # Baseline comparison
-    n_baselines = len(config.baseline.models)
-    print(f"\n2. BASELINE COMPARISON: {n_baselines} models")
-    print(f"   - Models: {', '.join(config.baseline.models[:5])}...")
+    # Time estimates (per experiment: ~30min on 1 GPU with 40 epochs)
+    time_1gpu = total * 0.5  # hours
+    time_ngpu = time_1gpu / max(n_gpus, 1)  # multi-GPU linear speedup
     
-    # Additional experiments
-    additional = 0
-    if config.experiments.use_cross_validation:
-        additional += config.experiments.cv_folds
-        print(f"\n3. CROSS-VALIDATION: {config.experiments.cv_folds}-fold")
-    
-    if config.experiments.test_snr_robustness:
-        snr_runs = len(config.experiments.snr_levels_db)
-        additional += snr_runs
-        print(f"\n4. SNR ROBUSTNESS: {snr_runs} levels")
-    
-    if config.experiments.test_binarization:
-        bin_runs = len(config.experiments.binarization_methods)
-        additional += bin_runs
-        print(f"\n5. BINARIZATION ABLATION: {bin_runs} methods")
-    
-    if config.experiments.test_learning_curve:
-        lc_runs = len(config.experiments.training_fractions)
-        additional += lc_runs
-        print(f"\n6. LEARNING CURVE: {lc_runs} data fractions")
-    
-    total = ablation_runs + n_baselines + additional
-    print(f"\n{'=' * 70}")
-    print(f"TOTAL ESTIMATED RUNS: ~{total}")
-    print(f"Estimated time (GPU): ~{total * 0.5:.1f} hours")
-    print(f"{'=' * 70}\n")
+    print("=" * 60)
+    print("ABLATION STUDY CONFIGURATION")
+    print("=" * 60)
+    print(f"\nArchitecture combos: {n_arch}")
+    print(f"  Growth rates: {config.ablation.growth_rates}")
+    print(f"  Compressions: {config.ablation.compressions}")
+    print(f"  Depths: {config.ablation.depths}")
+    print(f"\nBatch sizes: {config.ablation.batch_sizes}")
+    print(f"Resolutions: {config.ablation.resolutions}")
+    print(f"Seeds: {config.training.seeds} (use_multiple_seeds={config.training.use_multiple_seeds})")
+    print(f"\nOptional:")
+    print(f"  Cross-validation: {config.training.enable_cross_validation}")
+    print(f"  SNR testing: {config.training.enable_snr_testing}")
+    print(f"\n{'─' * 60}")
+    print(f"Total configs: {n_configs}")
+    print(f"Total experiments: {n_configs} × {n_seeds} = {total}")
+    print(f"\n🖥️  Detected GPUs: {n_gpus}")
+    print(f"⏱️  Estimated time (1 GPU): ~{time_1gpu:.0f} hours")
+    print(f"⏱️  Estimated time ({n_gpus} GPU{'s' if n_gpus > 1 else ''}): ~{time_ngpu:.0f} hours")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
-    config = DEFAULT_RESEARCH_CONFIG
-    print_experiment_summary(config)
+    print_experiment_summary()
