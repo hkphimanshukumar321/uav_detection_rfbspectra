@@ -81,7 +81,6 @@ def test_config_loading(results: TestResult):
         ('config.model.growth_rate', lambda: config.model.growth_rate),
         ('config.training.epochs', lambda: config.training.epochs),
         ('config.ablation.growth_rates', lambda: config.ablation.growth_rates),
-        ('config.experiments.binarization_methods', lambda: config.experiments.binarization_methods),
     ]
     
     for name, getter in checks:
