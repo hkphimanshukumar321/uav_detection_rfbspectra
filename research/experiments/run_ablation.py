@@ -234,6 +234,15 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
             X_exp, Y_exp, train_ratio=0.7, val_ratio=0.15, seed=seed
         )
         
+        # Calculate class weights for imbalance handling
+        from sklearn.utils import class_weight
+        class_weights_vals = class_weight.compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        class_weights = dict(enumerate(class_weights_vals))
+        
         inp_shape = (res, res, 3)
         
         # Create model (within strategy scope for multi-GPU)
@@ -262,6 +271,7 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
             run_dir=run_dir,
             epochs=epochs,
             batch_size=batch,
+            class_weights=class_weights,
             early_stopping_patience=config.training.early_stopping_patience
         )
         
@@ -322,6 +332,10 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
                                           config.data.img_size[0], seed)
             result['ablation_group'] = 'architecture'
             all_results.append(result)
+            # Intermediate save
+            pd.DataFrame([result]).to_csv(results_dir / "ablation_full_factorial.csv", 
+                                        mode='a', header=not (results_dir / "ablation_full_factorial.csv").exists(), 
+                                        index=False)
             arch_histories.append({'exp_id': exp_id, 'seed': seed, 'history': history})
             progress.update()
     
@@ -339,6 +353,10 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
                                           bs, config.data.img_size[0], seed)
             result['ablation_group'] = 'batch_size'
             all_results.append(result)
+            # Intermediate save
+            pd.DataFrame([result]).to_csv(results_dir / "ablation_full_factorial.csv", 
+                                        mode='a', header=not (results_dir / "ablation_full_factorial.csv").exists(), 
+                                        index=False)
             progress.update()
     
     # ----- RESOLUTION ABLATION -----
@@ -355,6 +373,10 @@ def run_ablation(quick_test: bool = False, single_seed: bool = False):
                                           config.training.batch_size, res, seed)
             result['ablation_group'] = 'resolution'
             all_results.append(result)
+            # Intermediate save
+            pd.DataFrame([result]).to_csv(results_dir / "ablation_full_factorial.csv", 
+                                        mode='a', header=not (results_dir / "ablation_full_factorial.csv").exists(), 
+                                        index=False)
             progress.update()
     
     # =========================================================================

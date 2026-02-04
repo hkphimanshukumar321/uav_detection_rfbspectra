@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-02-04T03:04:57.513445",
-  "total_passed": 19,
-  "total_failed": 9,
+  "timestamp": "2026-02-04T21:25:29.133160",
+  "total_passed": 17,
+  "total_failed": 5,
   "all_tests_pass": false,
   "categories": {
     "smoke": {
-      "passed": 19,
-      "failed": 9,
+      "passed": 17,
+      "failed": 5,
       "errors": [
         [
           "Model architectures (src.models)",
@@ -14,34 +14,18 @@
         ],
         [
           "Training utilities (src.training)",
-          "No module named 'pandas'"
+          "No module named 'tensorflow'"
         ],
         [
           "Data loading utilities (src.data_loader)",
           "No module named 'cv2'"
         ],
         [
-          "Visualization module (src.visualization)",
-          "No module named 'pandas'"
-        ],
-        [
-          "Pandas",
-          "Not installed"
+          "ResearchConfig class imports",
+          "cannot import name 'DEFAULT_RESEARCH_CONFIG' from 'config' (C:\\Users\\hkphi\\Downloads\\DRONE RFB SPECTRA\\research\\config.py)"
         ],
         [
           "TensorFlow",
-          "Not installed"
-        ],
-        [
-          "Scikit-learn",
-          "Not installed"
-        ],
-        [
-          "Seaborn",
-          "Not installed"
-        ],
-        [
-          "OpenCV",
           "Not installed"
         ]
       ]
