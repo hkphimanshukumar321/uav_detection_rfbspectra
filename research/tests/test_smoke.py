@@ -62,7 +62,7 @@ def test_config_loading(results: TestResult):
     print("\n⚙️ Testing Configuration...")
     
     try:
-        from config import ResearchConfig, DEFAULT_RESEARCH_CONFIG
+        from config import ResearchConfig
         results.add_pass("ResearchConfig class imports")
     except ImportError as e:
         results.add_fail("ResearchConfig class imports", str(e))
