@@ -81,67 +81,53 @@ def generate_confusion_matrices():
         print(f"Error loading data: {e}")
         return
 
-    # Process runs
-    processed_count = 0
-    max_plots = 3
+    # Target specific best model
+    target_run = "arch_gr12_c0.75_d4_4_4_seed42"
+    print(f"Targeting best model: {target_run}")
     
-    count_dict = {
-        'architecture': 0,
-        'batch_size': 0,
-        'resolution': 0
-    }
-    
-    # Heuristic: Find representative runs
-    print("Scanning for representative runs...")
-    
-    for run_path in sorted(runs_dir.iterdir()):
-        if not run_path.is_dir(): continue
+    run_path = runs_dir / target_run
+    if not run_path.exists():
+        print(f"Error: Run directory not found: {run_path}")
+        return
         
-        model_file = run_path / "best_model.h5"
-        if not model_file.exists(): continue
+    model_file = run_path / "best_model.h5"
+    if not model_file.exists():
+        print(f"Error: Model file not found: {model_file}")
+        return
         
-        # Categorize run
-        name = run_path.name
-        group = 'other'
-        if 'arch_' in name: group = 'architecture'
-        elif 'batch_' in name: group = 'batch_size'
-        elif 'res_' in name: group = 'resolution'
+    try:
+        print(f"Loading model from {model_file}...")
+        model = tf.keras.models.load_model(str(model_file))
         
-        # Only plot one per group to avoid clutter, or specifically high-res ones
-        target_group_limit = 1
-        if count_dict.get(group, 0) >= target_group_limit:
-            continue
-            
-        print(f"Generating CM for: {name} (Group: {group})")
+        print("Running inference on test set (full dataset)...")
+        y_pred_probs = model.predict(X_test, verbose=1, batch_size=32)
+        y_pred = np.argmax(y_pred_probs, axis=1)
         
-        try:
-            model = tf.keras.models.load_model(str(model_file))
-            
-            # Inference
-            y_pred_probs = model.predict(X_test, verbose=1, batch_size=32)
-            y_pred = np.argmax(y_pred_probs, axis=1)
-            
-            # Compute CM
-            cm = confusion_matrix(y_test, y_pred)
-            
-            # Plot using project utility
-            plot_confusion_matrix(
-                confusion_matrix=cm,
-                class_labels=categories,
-                title=f"Confusion Matrix\n{name}",
-                normalize=True,
-                save_path=figures_dir / f"confusion_matrix_{name}",
-                figsize=(12, 10)
-            )
-            
-            print(f"Saved figure for {name}")
-            count_dict[group] = count_dict.get(group, 0) + 1
-            processed_count += 1
-            
-            if processed_count >= 5: # Total safety limit
-                break
-                
-        except Exception as e:
-            print(f"Failed to process {name}: {e}")
+        # Compute CM
+        print("Computing confusion matrix...")
+        cm = confusion_matrix(y_test, y_pred)
+        
+        # Plot using project utility
+        print("Generating visualization...")
+        save_path = figures_dir / f"confusion_matrix_BEST_{target_run}"
+        
+        plot_confusion_matrix(
+            confusion_matrix=cm,
+            class_labels=categories,
+            title=f"Confusion Matrix (Best Model)\n{target_run}",
+            normalize=True,
+            save_path=save_path,
+            figsize=(14, 12) # Slightly larger for better readability
+        )
+        
+        print(f"Values exported to: {save_path}.png")
+        
+    except Exception as e:
+        print(f"Failed to process {target_run}: {e}")
+        import traceback
+        traceback.print_exc()
 
     print("Done. Please git add/commit/push the new figures.")
+
+if __name__ == "__main__":
+    generate_confusion_matrices()
