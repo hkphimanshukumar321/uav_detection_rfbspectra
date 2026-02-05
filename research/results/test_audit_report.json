@@ -1,34 +1,23 @@
 {
-  "timestamp": "2026-02-05T00:23:32.256445",
-  "total_passed": 17,
-  "total_failed": 5,
-  "all_tests_pass": false,
+  "timestamp": "2026-02-04T19:55:53.854517",
+  "total_passed": 55,
+  "total_failed": 0,
+  "all_tests_pass": true,
   "categories": {
     "smoke": {
+      "passed": 27,
+      "failed": 0,
+      "errors": []
+    },
+    "functional": {
       "passed": 17,
-      "failed": 5,
-      "errors": [
-        [
-          "Model architectures (src.models)",
-          "No module named 'tensorflow'"
-        ],
-        [
-          "Training utilities (src.training)",
-          "No module named 'tensorflow'"
-        ],
-        [
-          "Data loading utilities (src.data_loader)",
-          "No module named 'tensorflow'"
-        ],
-        [
-          "ResearchConfig class imports",
-          "cannot import name 'DEFAULT_RESEARCH_CONFIG' from 'config' (C:\\Users\\hkphi\\Downloads\\DRONE RFB SPECTRA\\research\\config.py)"
-        ],
-        [
-          "TensorFlow",
-          "Not installed"
-        ]
-      ]
+      "failed": 0,
+      "errors": []
+    },
+    "integration": {
+      "passed": 11,
+      "failed": 0,
+      "errors": []
     }
   }
 }
