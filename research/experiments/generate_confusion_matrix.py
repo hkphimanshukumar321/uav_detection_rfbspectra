@@ -3,24 +3,23 @@
 Generate Confusion Matrices from Saved Models
 =============================================
 Loads the best model from each run, performs inference on the test set,
-and generates a confusion matrix.
+and generates a confusion matrix using the project's visualization tools.
 """
 
 import os
 import sys
 import numpy as np
 import tensorflow as tf
-import seaborn as sns
-import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.metrics import confusion_matrix
 
 # Add research root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-# Import data loading
+# Correct Imports based on codebase verification
 from research.config import ResearchConfig
-from research.src.data_loader import get_data_generators
+from research.src.data_loader import validate_dataset_directory, load_dataset_numpy, split_dataset
+from research.src.visualization import plot_confusion_matrix, close_all_figures
 
 def generate_confusion_matrices():
     results_dir = Path("research/results")
@@ -31,7 +30,7 @@ def generate_confusion_matrices():
     # Instantiate Config
     config = ResearchConfig()
     
-    # robust data path checking
+    # Robust data path checking
     data_dir = config.data.data_dir
     possible_paths = [
         data_dir,
@@ -55,93 +54,94 @@ def generate_confusion_matrices():
     print(f"Loading test data from: {final_data_path}")
     
     try:
-        # We only need the test generator
-        _, _, test_gen = get_data_generators(
+        # 1. Validate and get categories
+        categories, _ = validate_dataset_directory(final_data_path)
+        print(f"Classes: {categories}")
+        
+        # 2. Load Dataset into Memory (as per project pattern)
+        # Note: This loads all data, might be heavy but is how the project works
+        X, Y = load_dataset_numpy(
             data_dir=final_data_path,
-            batch_size=32, # Standard batch size for inference
-            target_size=config.data.img_size
+            categories=categories,
+            img_size=config.data.img_size,
+            show_progress=True
         )
+        
+        # 3. Split to get Test set
+        splits = split_dataset(
+            X, Y, 
+            test_size=config.data.test_split,
+            val_size=config.data.val_split,
+            seed=42 # Use fixed seed to match training split
+        )
+        X_test, y_test = splits['test']
+        print(f"Test Set: {len(X_test)} samples")
+        
     except Exception as e:
         print(f"Error loading data: {e}")
-        print("Please ensure Config.DATA_DIR is correct on the server.")
         return
 
-    # Helper to get class names
-    class_names = sorted(list(test_gen.class_indices.keys()))
-    print(f"Classes: {class_names}")
-
-    # We can't do ALL runs (too many), so let's pick the BEST run from each group
-    # Or just one representative run. 
-    # For now, let's look for 'arch_gr12_c0.5_d3_3_3' (a middle/default one) or similar.
-    
-    # Strategy: Find one valid run for the 'Default/Baseline' configuration to show the CM.
-    # Often CM is shown for the *best* performing model.
-    
-    # Valid run patterns to look for (one from each group or just the best)
-    target_pattern = "arch_gr12_c0.5_d3-3-3" # Hypothetical 'center' point
-    # Actually, let's just scan all and pick the one with highest accuracy in history.csv?
-    # That might be slow. Let's just pick the first few distinct ones.
-    
+    # Process runs
     processed_count = 0
-    max_plots = 3 # Limit to avoid flooding
+    max_plots = 3
     
-    for run_path in runs_dir.iterdir():
+    count_dict = {
+        'architecture': 0,
+        'batch_size': 0,
+        'resolution': 0
+    }
+    
+    # Heuristic: Find representative runs
+    print("Scanning for representative runs...")
+    
+    for run_path in sorted(runs_dir.iterdir()):
         if not run_path.is_dir(): continue
         
         model_file = run_path / "best_model.h5"
         if not model_file.exists(): continue
         
-        # Heuristic: Only plot for runs that look like "canonical" examples or high performance
-        # For this script, let's just plot the FIRST one we find to test, 
-        # and maybe one with specific keyword if user wants.
-        # User asked for "confusion matrix", usually implies for the *best* model.
+        # Categorize run
+        name = run_path.name
+        group = 'other'
+        if 'arch_' in name: group = 'architecture'
+        elif 'batch_' in name: group = 'batch_size'
+        elif 'res_' in name: group = 'resolution'
         
-        # Let's try to find a high-res, reasonable depth one.
-        if "res_128" in run_path.name or "d3_3_3" in run_path.name:
-             pass # Good candidate
-        else:
-             if processed_count >= 1: # If we haven't found any good ones, keep looking, but if we have, skip others
-                 continue
-        
-        print(f"Generating CM for: {run_path.name}")
+        # Only plot one per group to avoid clutter, or specifically high-res ones
+        target_group_limit = 1
+        if count_dict.get(group, 0) >= target_group_limit:
+            continue
+            
+        print(f"Generating CM for: {name} (Group: {group})")
         
         try:
             model = tf.keras.models.load_model(str(model_file))
             
-            # Predict
-            # Reset generator
-            test_gen.reset()
-            # Get all batches
-            y_pred_probs = model.predict(test_gen, verbose=1)
+            # Inference
+            y_pred_probs = model.predict(X_test, verbose=1, batch_size=32)
             y_pred = np.argmax(y_pred_probs, axis=1)
-            y_true = test_gen.classes
             
             # Compute CM
-            cm = confusion_matrix(y_true, y_pred)
+            cm = confusion_matrix(y_test, y_pred)
             
-            # Plot
-            plt.figure(figsize=(10, 8))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                        xticklabels=class_names, yticklabels=class_names)
-            plt.xlabel('Predicted')
-            plt.ylabel('True')
-            plt.title(f'Confusion Matrix\n{run_path.name}')
-            plt.tight_layout()
+            # Plot using project utility
+            plot_confusion_matrix(
+                confusion_matrix=cm,
+                class_labels=categories,
+                title=f"Confusion Matrix\n{name}",
+                normalize=True,
+                save_path=figures_dir / f"confusion_matrix_{name}",
+                figsize=(12, 10)
+            )
             
-            out_file = figures_dir / f"confusion_matrix_{run_path.name}.png"
-            plt.savefig(out_file, dpi=300)
-            plt.close()
-            
-            print(f"Saved: {out_file}")
+            print(f"Saved figure for {name}")
+            count_dict[group] = count_dict.get(group, 0) + 1
             processed_count += 1
             
-            if processed_count >= max_plots:
+            if processed_count >= 5: # Total safety limit
                 break
                 
         except Exception as e:
-            print(f"Failed to generate for {run_path.name}: {e}")
+            print(f"Failed to process {name}: {e}")
 
-    print("Done.")
-
-if __name__ == "__main__":
-    generate_confusion_matrices()
+    print("Done. Please git add/commit/push the new figures.")
