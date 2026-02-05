@@ -18,8 +18,8 @@ from sklearn.metrics import confusion_matrix
 # Add research root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-# Import data loading or define it here if config is tricky
-from research.config import Config
+# Import data loading
+from research.config import ResearchConfig
 from research.src.data_loader import get_data_generators
 
 def generate_confusion_matrices():
@@ -28,16 +28,38 @@ def generate_confusion_matrices():
     figures_dir = results_dir / "figures_journal_v2"
     figures_dir.mkdir(parents=True, exist_ok=True)
     
-    # Locate data (Assuming it's available on server at Config.DATA_DIR)
-    # We need to ensure Config points to the right place or allow override
-    print(f"Loading test data from: {Config.DATA_DIR}")
+    # Instantiate Config
+    config = ResearchConfig()
+    
+    # robust data path checking
+    data_dir = config.data.data_dir
+    possible_paths = [
+        data_dir,
+        Path("data"), 
+        Path("../data"),
+        Path("../../data"),
+        Path("/home/himanshuk/DRONE_RFB_SPECTRA/uav_detection_rfbspectra/data"),
+        Path.home() / "DRONE_RFB_SPECTRA/uav_detection_rfbspectra/data"
+    ]
+    
+    final_data_path = None
+    for p in possible_paths:
+        if p.exists() and p.is_dir():
+            final_data_path = p
+            break
+            
+    if final_data_path is None:
+        print(f"Error: Could not find data directory. Checked: {possible_paths}")
+        return
+        
+    print(f"Loading test data from: {final_data_path}")
     
     try:
         # We only need the test generator
         _, _, test_gen = get_data_generators(
-            data_dir=Config.DATA_DIR,
+            data_dir=final_data_path,
             batch_size=32, # Standard batch size for inference
-            target_size=Config.IMG_SIZE
+            target_size=config.data.img_size
         )
     except Exception as e:
         print(f"Error loading data: {e}")
