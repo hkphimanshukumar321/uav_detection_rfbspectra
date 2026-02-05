@@ -33,6 +33,7 @@ def main():
     print("Locating data directory...")
     data_dir = config.data.data_dir
     possible_paths = [
+        Path("/home/himanshuk/DRONE_RFB_SPECTRA/uav_detection_rfbspectra/nr1 1 (1)"),
         Path("data"), 
         Path("/home/himanshuk/DRONE_RFB_SPECTRA/uav_detection_rfbspectra/data"),
         data_dir,
